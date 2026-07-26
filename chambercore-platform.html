@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ChamberCore — Chamber Management Platform</title>
+<link rel="icon" type="image/png" href="assets/chambercore-logo.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -28,7 +29,8 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--navy);co
 .sidebar{width:var(--sw);flex-shrink:0;background:var(--navy-mid);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100;transition:transform .3s ease;}
 .s-logo{padding:20px 18px 16px;border-bottom:1px solid var(--border);}
 .logo-r{display:flex;align-items:center;gap:10px;}
-.logo-ic{width:32px;height:32px;background:var(--gold);border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:700;font-size:15px;color:var(--navy);flex-shrink:0;}
+.logo-ic{width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.logo-ic img{width:100%;height:100%;object-fit:contain;}
 .logo-tx{font-family:'Playfair Display',serif;font-weight:700;font-size:16px;}
 .logo-sb{font-size:9px;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;}
 .s-org{padding:10px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:9px;}
@@ -335,7 +337,8 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--navy);co
 /* ── LOGIN SCREEN ── */
 #login-screen{position:fixed;inset:0;background:var(--navy);z-index:500;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;}
 .login-logo{display:flex;align-items:center;gap:12px;margin-bottom:10px;}
-.login-logo-ic{width:44px;height:44px;background:var(--gold);border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:700;font-size:20px;color:var(--navy);}
+.login-logo-ic{width:44px;height:44px;display:flex;align-items:center;justify-content:center;}
+.login-logo-ic img{width:100%;height:100%;object-fit:contain;}
 .login-logo-tx{font-family:'Playfair Display',serif;font-size:24px;font-weight:700;}
 .login-tagline{font-size:12px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:40px;}
 .login-card{background:var(--navy-mid);border:1px solid var(--border2);border-radius:16px;padding:30px;width:100%;max-width:400px;}
@@ -694,7 +697,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--navy);co
 <!-- ═══ LOGIN SCREEN ═══ -->
 <div id="login-screen">
   <div class="login-logo">
-    <div class="login-logo-ic">C</div>
+    <div class="login-logo-ic"><img src="assets/chambercore-logo.png" alt="ChamberCore logo"></div>
     <div class="login-logo-tx">ChamberCore</div>
   </div>
   <div class="login-tagline">Your Chamber of Commerce &mdash; Member Platform</div>
@@ -868,7 +871,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--navy);co
 <nav class="sidebar" id="sidebar">
   <div class="s-logo">
     <div class="logo-r">
-      <div class="logo-ic">C</div>
+      <div class="logo-ic"><img src="assets/chambercore-logo.png" alt="ChamberCore logo"></div>
       <div><div class="logo-tx">ChamberCore</div><div class="logo-sb">Member Platform</div></div>
     </div>
   </div>

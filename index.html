@@ -4,6 +4,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ChamberCore — Chamber Management Built for Chambers</title>
+<link rel="icon" type="image/png" href="assets/chambercore-logo.png">
 <link href="./ChamberCore — Chamber Management Built for Chambers_files/css2" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
@@ -43,7 +44,8 @@ nav{
   transition:background .3s;
 }
 .nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;}
-.nav-logo-ic{width:32px;height:32px;background:var(--gold);border-radius:7px;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:700;font-size:15px;color:var(--navy);}
+.nav-logo-ic{width:32px;height:32px;display:flex;align-items:center;justify-content:center;}
+.nav-logo-ic img{width:100%;height:100%;object-fit:contain;}
 .nav-logo-tx{font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--off-white);}
 .nav-links{display:flex;align-items:center;gap:32px;}
 .nav-links a{font-size:14px;font-weight:500;color:var(--text-muted);text-decoration:none;transition:color .15s;}
@@ -732,7 +734,7 @@ footer{
 <!-- NAV -->
 <nav id="main-nav" style="background: rgba(10, 22, 40, 0.97);">
   <a class="nav-logo" href="#hero">
-    <div class="nav-logo-ic">C</div>
+    <div class="nav-logo-ic"><img src="assets/chambercore-logo.png" alt="ChamberCore logo"></div>
     <div class="nav-logo-tx">ChamberCore</div>
   </a>
   <div class="nav-links">
@@ -1190,7 +1192,7 @@ footer{
 <!-- FOOTER -->
 <footer>
   <div class="footer-left">
-    <div class="nav-logo-ic" style="width:28px;height:28px;font-size:13px;">C</div>
+    <div class="nav-logo-ic" style="width:28px;height:28px;"><img src="assets/chambercore-logo.png" alt="ChamberCore logo"></div>
     <span style="font-family:&#39;Playfair Display&#39;,serif;font-size:16px;font-weight:600;">ChamberCore</span>
   </div>
   <div class="footer-right">© 2026 ChamberCore. Built for chamber professionals.</div>
