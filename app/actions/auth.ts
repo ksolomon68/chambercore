@@ -106,6 +106,7 @@ export async function signup(
   });
 
   if (memberError) {
+    console.error("Member creation failed:", memberError);
     return { error: "Could not set up your account. Please try again." };
   }
 
@@ -116,9 +117,9 @@ export async function signup(
     path: "/",
   });
 
-  if (planTier === "starter" || planTier === "professional") {
-    redirect(`/api/stripe/checkout?orgId=${org.id}&tier=${planTier}`);
-  }
+  // if (planTier === "starter" || planTier === "professional") {
+  //   redirect(`/api/stripe/checkout?orgId=${org.id}&tier=${planTier}`);
+  // }
 
   redirect("/dashboard");
 }
