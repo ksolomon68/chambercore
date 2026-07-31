@@ -1,0 +1,6 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/chambercore/public_html/
+    - /bin/cp -R index.html $DEPLOYPATH
+    - /bin/cp -R chambercore-platform.html $DEPLOYPATH
