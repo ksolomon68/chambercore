@@ -95,6 +95,7 @@ export async function signup(
     .single();
 
   if (orgError || !org) {
+    console.error("Organization creation failed:", orgError);
     return { error: "Could not create your chamber. Please try again." };
   }
 
