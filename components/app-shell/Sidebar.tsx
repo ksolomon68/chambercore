@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV_SECTIONS } from "./nav-config";
@@ -10,9 +11,7 @@ export function Sidebar({ orgName }: { orgName: string }) {
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r border-card-border bg-navy-mid md:flex">
       <div className="flex h-16 items-center gap-2.5 border-b border-card-border px-5">
-        <span className="flex h-8 w-8 items-center justify-center rounded-md bg-gold font-display text-sm font-bold text-navy">
-          C
-        </span>
+        <Image src="/favicon.png" alt="" width={32} height={32} className="rounded-md" />
         <div className="min-w-0">
           <div className="truncate font-display text-sm font-bold text-off-white">
             {orgName}

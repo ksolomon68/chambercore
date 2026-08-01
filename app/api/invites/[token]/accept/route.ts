@@ -47,11 +47,39 @@ export async function POST(
     );
   }
 
+  if (invite.role === "member") {
+    if (!invite.member_id) {
+      return NextResponse.json(
+        { error: "This invite is missing a linked member record." },
+        { status: 500 },
+      );
+    }
+
+    const { error: linkError } = await admin
+      .from("members")
+      .update({ user_id: user.id })
+      .eq("id", invite.member_id);
+
+    if (linkError) {
+      return NextResponse.json(
+        { error: "Could not link your account. Please contact your chamber." },
+        { status: 500 },
+      );
+    }
+
+    await admin
+      .from("org_invites")
+      .update({ accepted_at: new Date().toISOString() })
+      .eq("id", invite.id);
+
+    return NextResponse.json({ portal: true });
+  }
+
   const { error: memberError } = await admin.from("org_members").upsert(
     {
       org_id: invite.org_id,
       user_id: user.id,
-      role: invite.role === "member" ? "staff" : invite.role,
+      role: invite.role,
     },
     { onConflict: "org_id,user_id" },
   );

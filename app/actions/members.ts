@@ -4,10 +4,11 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { requireOrg, requireRole } from "@/lib/auth/session";
 import { canEditMembers, canDeleteMembers } from "@/lib/auth/permissions";
 
-export type FormState = { error?: string } | undefined;
+export type FormState = { error?: string; success?: boolean } | undefined;
 
 const MemberSchema = z.object({
   businessName: z.string().min(1, "Business name is required."),
@@ -158,4 +159,57 @@ export async function deleteMember(memberId: string) {
   const supabase = await createClient();
   await supabase.from("members").delete().eq("id", memberId).eq("org_id", org.id);
   revalidatePath("/members");
+}
+
+// Invites an existing business member to create their own portal login,
+// linking the resulting auth user to this `members` row on acceptance
+// (see app/api/invites/[token]/accept/route.ts).
+export async function inviteMemberToPortal(
+  memberId: string,
+  _prevState: FormState,
+  _formData: FormData,
+): Promise<FormState> {
+  const org = await requireOrg();
+  if (!canEditMembers(org.role)) {
+    return { error: "You don't have permission to invite members." };
+  }
+
+  const supabase = await createClient();
+  const { data: member } = await supabase
+    .from("members")
+    .select("id, email, user_id")
+    .eq("id", memberId)
+    .eq("org_id", org.id)
+    .maybeSingle();
+
+  if (!member) return { error: "Member not found." };
+  if (member.user_id) return { error: "This member already has portal access." };
+  if (!member.email) return { error: "Add an email address for this member first." };
+
+  const { data: userResult } = await supabase.auth.getUser();
+  const admin = createAdminClient();
+
+  const { data: invite, error } = await admin
+    .from("org_invites")
+    .insert({
+      org_id: org.id,
+      email: member.email,
+      role: "member",
+      member_id: member.id,
+      invited_by: userResult.user?.id,
+    })
+    .select()
+    .single();
+
+  if (error || !invite) {
+    return {
+      error: error?.message ?? "Could not create invite (maybe already pending).",
+    };
+  }
+
+  const inviteUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/invite/${invite.token}`;
+  await admin.auth.admin.inviteUserByEmail(member.email, { redirectTo: inviteUrl });
+
+  revalidatePath(`/members/${memberId}`);
+  return { success: true };
 }

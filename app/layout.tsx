@@ -18,6 +18,9 @@ export const metadata: Metadata = {
   title: "ChamberCore — Chamber Management Built for Chambers",
   description:
     "The all-in-one platform for running a chamber of commerce: members, dues, events, board governance, and advocacy in one place.",
+  icons: {
+    icon: "/favicon.png",
+  },
 };
 
 export default function RootLayout({

@@ -1,7 +1,23 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/members", "/directory", "/settings"];
+const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/members",
+  "/directory",
+  "/settings",
+  "/portal",
+  "/dues",
+  "/events",
+  "/marketplace",
+  "/documents",
+  "/meetings",
+  "/board",
+  "/voting",
+  "/committees",
+  "/analytics",
+  "/advocacy",
+];
 
 // Refreshes the Supabase session on every request and redirects unauthenticated
 // users away from (app) routes. This is a UX convenience, not the security

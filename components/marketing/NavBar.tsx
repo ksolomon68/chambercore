@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { ButtonLink } from "@/components/ui/Button";
 
@@ -11,9 +12,7 @@ export function NavBar() {
   return (
     <nav className="fixed inset-x-0 top-0 z-50 flex h-16 items-center justify-between border-b border-white/5 bg-navy/90 px-6 backdrop-blur-lg md:px-12">
       <Link href="/" className="flex items-center gap-2.5">
-        <span className="flex h-8 w-8 items-center justify-center rounded-md bg-gold font-display text-sm font-bold text-navy">
-          C
-        </span>
+        <Image src="/favicon.png" alt="" width={32} height={32} className="rounded-md" />
         <span className="font-display text-lg font-bold text-off-white">
           ChamberCore
         </span>

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 export default function AuthLayout({
@@ -12,9 +13,7 @@ export default function AuthLayout({
           href="/"
           className="mb-8 flex items-center justify-center gap-2 font-display text-xl font-bold text-off-white"
         >
-          <span className="flex h-8 w-8 items-center justify-center rounded-md bg-gold font-display text-sm font-bold text-navy">
-            C
-          </span>
+          <Image src="/favicon.png" alt="" width={32} height={32} className="rounded-md" />
           ChamberCore
         </Link>
         <div className="rounded-xl border border-card-border bg-card-bg p-8">

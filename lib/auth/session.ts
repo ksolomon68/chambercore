@@ -2,7 +2,12 @@ import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import type { OrgRole, PlanTier } from "@/lib/types/database.types";
+import type {
+  MemberStatus,
+  MemberTier,
+  OrgRole,
+  PlanTier,
+} from "@/lib/types/database.types";
 import { CURRENT_ORG_COOKIE } from "@/lib/auth/constants";
 
 export { CURRENT_ORG_COOKIE };
@@ -84,4 +89,70 @@ export async function requireRole(minimum: OrgRole) {
     redirect("/dashboard?error=forbidden");
   }
   return org;
+}
+
+export type CurrentMember = {
+  id: string;
+  orgId: string;
+  businessName: string;
+  contactName: string | null;
+  email: string | null;
+  phone: string | null;
+  tier: MemberTier;
+  status: MemberStatus;
+  memberSince: string;
+  orgName: string;
+  orgSlug: string;
+  primaryColor: string;
+};
+
+// Resolves the business-member record linked to the signed-in user, for the
+// member self-service portal — the counterpart to getCurrentOrg() for staff.
+// A user is expected to be either staff (org_members) or a member, not both.
+export async function getCurrentMember(): Promise<CurrentMember | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
+
+  const supabase = await createClient();
+
+  const { data: member } = await supabase
+    .from("members")
+    .select(
+      "id, org_id, business_name, contact_name, email, phone, tier, status, member_since",
+    )
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (!member) return null;
+
+  // public_org_profile (not `organizations`) because a member has no
+  // org_members row and therefore fails the organizations RLS policy.
+  const { data: org } = await supabase
+    .from("public_org_profile")
+    .select("name, slug, primary_color")
+    .eq("id", member.org_id)
+    .maybeSingle();
+
+  if (!org) return null;
+
+  return {
+    id: member.id,
+    orgId: member.org_id,
+    businessName: member.business_name,
+    contactName: member.contact_name,
+    email: member.email,
+    phone: member.phone,
+    tier: member.tier,
+    status: member.status,
+    memberSince: member.member_since,
+    orgName: org.name,
+    orgSlug: org.slug,
+    primaryColor: org.primary_color,
+  };
+}
+
+export async function requireMember() {
+  const member = await getCurrentMember();
+  if (!member) redirect("/login");
+  return member;
 }

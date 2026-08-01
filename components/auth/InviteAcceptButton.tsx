@@ -20,6 +20,10 @@ export function InviteAcceptButton({ token }: { token: string }) {
       setPending(false);
       return;
     }
+    if (body.portal) {
+      router.push("/portal");
+      return;
+    }
     document.cookie = `${CURRENT_ORG_COOKIE}=${body.orgId}; path=/; samesite=lax`;
     router.push("/dashboard");
   }

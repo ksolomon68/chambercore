@@ -143,13 +143,40 @@ export async function login(
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword(parsed.data);
+  const { data: signInData, error } =
+    await supabase.auth.signInWithPassword(parsed.data);
 
   if (error) {
     return { error: "Invalid email or password." };
   }
 
-  redirect("/dashboard");
+  const userId = signInData.user?.id;
+  if (userId) {
+    // Staff (org_members) takes priority, then fall back to a linked
+    // business-member record (the self-service portal). A person is expected
+    // to be one or the other, not both.
+    const { data: staffMembership } = await supabase
+      .from("org_members")
+      .select("org_id")
+      .eq("user_id", userId)
+      .limit(1)
+      .maybeSingle();
+
+    if (staffMembership) redirect("/dashboard");
+
+    const { data: memberRecord } = await supabase
+      .from("members")
+      .select("id")
+      .eq("user_id", userId)
+      .limit(1)
+      .maybeSingle();
+
+    if (memberRecord) redirect("/portal");
+  }
+
+  return {
+    error: "No account found for this login. Contact your chamber for access.",
+  };
 }
 
 export async function logout() {

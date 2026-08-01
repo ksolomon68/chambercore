@@ -26,12 +26,12 @@ export const NAV_SECTIONS: NavSection[] = [
   },
   {
     label: "Marketplace",
-    items: [{ label: "M2M Marketplace", href: "#", icon: "🤝", comingSoon: true }],
+    items: [{ label: "M2M Marketplace", href: "/marketplace", icon: "🤝" }],
   },
   {
     label: "Engagement",
     items: [
-      { label: "Events & Registration", href: "#", icon: "🗓️", comingSoon: true },
+      { label: "Events & Registration", href: "/events", icon: "🗓️" },
       { label: "Ribbon Cuttings", href: "#", icon: "🎀", comingSoon: true },
       { label: "QR Check-In", href: "#", icon: "📱", comingSoon: true },
       { label: "Communications Hub", href: "#", icon: "📧", comingSoon: true },
@@ -40,26 +40,26 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     label: "Revenue",
     items: [
-      { label: "Dues & Payments", href: "#", icon: "💳", comingSoon: true },
+      { label: "Dues & Payments", href: "/dues", icon: "💳" },
       { label: "Sponsorship Management", href: "#", icon: "⭐", comingSoon: true },
     ],
   },
   {
     label: "Governance",
     items: [
-      { label: "Board Overview", href: "#", icon: "🏛️", comingSoon: true },
-      { label: "Meetings & Agendas", href: "#", icon: "📋", comingSoon: true },
-      { label: "Voting & Polls", href: "#", icon: "🗳️", comingSoon: true },
-      { label: "Document Vault", href: "#", icon: "📁", comingSoon: true },
-      { label: "Committees", href: "#", icon: "🏢", comingSoon: true },
+      { label: "Board Overview", href: "/board", icon: "🏛️" },
+      { label: "Meetings & Agendas", href: "/meetings", icon: "📋" },
+      { label: "Voting & Polls", href: "/voting", icon: "🗳️" },
+      { label: "Document Vault", href: "/documents", icon: "📁" },
+      { label: "Committees", href: "/committees", icon: "🏢" },
     ],
   },
   {
     label: "Insights",
-    items: [{ label: "Analytics", href: "#", icon: "📈", comingSoon: true }],
+    items: [{ label: "Analytics", href: "/analytics", icon: "📈" }],
   },
   {
     label: "Advocacy",
-    items: [{ label: "Legislative Action", href: "#", icon: "⚖️", comingSoon: true }],
+    items: [{ label: "Legislative Action", href: "/advocacy", icon: "⚖️" }],
   },
 ];
