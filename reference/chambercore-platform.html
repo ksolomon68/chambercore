@@ -2861,5 +2861,371 @@ function signOut() {
   document.getElementById('login-screen').style.display = 'flex';
 })();
 </script>
+
+<!-- ChamberCore Assistant Embed -->
+<style>
+  .cc-assistant {
+    --bg: #0A1628;
+    --surface: rgba(255, 255, 255, 0.04);
+    --surface-solid: #101F36;
+    --border: rgba(255, 255, 255, 0.09);
+    --border-strong: rgba(255, 255, 255, 0.16);
+    --ink: #F5F0E8;
+    --ink-soft: rgba(245, 240, 232, 0.65);
+    --gold: #C8942A;
+    --gold-ink: #0A1628;
+    --gold-bright: #E8B84B;
+    --gold-wash: rgba(200, 148, 42, 0.12);
+    --gold-border: rgba(200, 148, 42, 0.28);
+    --teal: #00D4AA;
+    --whatsapp: #25D366;
+    --whatsapp-ink: #06210F;
+    --shadow: rgba(0, 0, 0, 0.45);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  .cc-assistant * { box-sizing: border-box; }
+  .cc-assistant [hidden] { display: none !important; }
+
+  .cc-widget-root {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 12px;
+  }
+
+  .cc-launcher {
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    background: var(--gold);
+    color: var(--gold-ink);
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 10px 24px var(--shadow);
+    font-size: 1.5rem;
+  }
+
+  .cc-launcher:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
+
+  .cc-panel {
+    width: 368px;
+    max-width: calc(100vw - 40px);
+    height: 500px;
+    max-height: 70vh;
+    background: var(--surface-solid);
+    border: 1px solid var(--border-strong);
+    border-radius: 16px;
+    box-shadow: 0 20px 50px var(--shadow);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .cc-panel-header {
+    background: rgba(255,255,255,0.03);
+    border-bottom: 1px solid var(--border);
+    color: var(--ink);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .cc-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--gold-wash);
+    border: 1px solid var(--gold-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    font-size: 1.05rem;
+  }
+
+  .cc-panel-header .cc-title { font-weight: 700; font-size: 0.98rem; font-family: 'Playfair Display', Georgia, serif; }
+
+  .cc-panel-header .cc-status {
+    font-size: 0.76rem;
+    color: var(--ink-soft);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+  }
+
+  .cc-status .cc-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--teal);
+    display: inline-block;
+  }
+
+  .cc-panel-close {
+    margin-left: auto;
+    background: transparent;
+    border: none;
+    color: var(--ink-soft);
+    cursor: pointer;
+    padding: 4px;
+  }
+
+  .cc-panel-close:hover { color: var(--ink); }
+
+  .cc-panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background: var(--bg);
+  }
+
+  .cc-msg {
+    max-width: 82%;
+    padding: 10px 13px;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+
+  .cc-msg.cc-bot {
+    align-self: flex-start;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    border-bottom-left-radius: 4px;
+  }
+
+  .cc-msg.cc-user {
+    align-self: flex-end;
+    background: var(--gold);
+    color: var(--gold-ink);
+    font-weight: 500;
+    border-bottom-right-radius: 4px;
+  }
+
+  .cc-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-self: stretch;
+  }
+
+  .cc-chip {
+    font-family: inherit;
+    font-size: 0.83rem;
+    font-weight: 600;
+    padding: 8px 13px;
+    border-radius: 999px;
+    border: 1.5px solid var(--border-strong);
+    background: transparent;
+    color: var(--ink);
+    cursor: pointer;
+  }
+
+  .cc-chip:hover { background: var(--surface); border-color: var(--gold-border); }
+  .cc-chip:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+  .cc-chip.cc-escalate {
+    border-color: var(--whatsapp);
+    color: var(--whatsapp);
+  }
+
+  .cc-handoff-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .cc-handoff-card .cc-lead {
+    font-weight: 700;
+    font-size: 0.95rem;
+    font-family: 'Playfair Display', Georgia, serif;
+    color: var(--ink);
+  }
+
+  .cc-handoff-card p {
+    margin: 0;
+    font-size: 0.87rem;
+    color: var(--ink-soft);
+  }
+
+  .cc-btn-whatsapp {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 0.92rem;
+    padding: 11px 20px;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    background: var(--whatsapp);
+    color: var(--whatsapp-ink);
+  }
+
+  .cc-btn-whatsapp:hover { filter: brightness(1.08); }
+
+  .cc-back-link {
+    background: none;
+    border: none;
+    color: var(--gold-bright);
+    font-family: inherit;
+    font-size: 0.84rem;
+    text-decoration: underline;
+    cursor: pointer;
+    align-self: flex-start;
+    padding: 0;
+  }
+
+  @media (max-width: 720px) {
+    .cc-widget-root { right: 0; bottom: 0; left: 0; align-items: stretch; }
+    .cc-launcher { align-self: flex-end; margin: 0 16px 16px 0; }
+    .cc-panel { width: 100%; max-width: 100%; height: 80vh; max-height: 80vh; border-radius: 16px 16px 0 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cc-assistant * { transition: none !important; animation: none !important; }
+  }
+</style>
+
+<div class="cc-assistant">
+  <div class="cc-widget-root" id="ccWidgetRoot">
+    <button class="cc-launcher" id="ccLauncherBtn" aria-label="Open ChamberCore Assistant">💬</button>
+
+    <div class="cc-panel" id="ccPanel" hidden>
+      <div class="cc-panel-header">
+        <div class="cc-avatar">💬</div>
+        <div>
+          <div class="cc-title">ChamberCore Assistant</div>
+          <div class="cc-status"><span class="cc-dot"></span> Online now</div>
+        </div>
+        <button class="cc-panel-close" id="ccPanelCloseBtn" aria-label="Close chat">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="cc-panel-body" id="ccPanelBody"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var WHATSAPP_NUMBER = '12145314427';
+
+  var QUESTIONS = [
+    { q: 'How do I set up dues billing?', a: 'Go to Dues & Payments in your left nav, then Create Billing Cycle. You can set annual, semi-annual, or custom cycles, and members get automatic reminders before renewal.' },
+    { q: 'Can members vote from their phone?', a: 'Yes. Voting & Polls works on any device. Board members get a notification and can cast a vote in under a minute.' },
+    { q: 'How much does ChamberCore cost?', a: 'Starter is $299 a month flat for up to 200 members, every module included. Our team can walk you through the tier that fits a chamber your size.' },
+    { q: 'How do I add a new board member?', a: 'Open Board Overview, select Add Board Member, and assign their role and committee access. They get an email invite to set up their portal login.' }
+  ];
+
+  var launcherBtn = document.getElementById('ccLauncherBtn');
+  var panel = document.getElementById('ccPanel');
+  var panelBody = document.getElementById('ccPanelBody');
+  var closeBtn = document.getElementById('ccPanelCloseBtn');
+  var opened = false;
+
+  function el(tag, className, text) {
+    var e = document.createElement(tag);
+    if (className) e.className = className;
+    if (text) e.textContent = text;
+    return e;
+  }
+
+  function greet() {
+    panelBody.innerHTML = '';
+    panelBody.appendChild(el('div', 'cc-msg cc-bot', "Hi, I'm the ChamberCore Assistant. Ask me anything about the platform, or tap a question below."));
+    var chips = el('div', 'cc-chips');
+    QUESTIONS.forEach(function (item) {
+      var chip = el('button', 'cc-chip', item.q);
+      chip.type = 'button';
+      chip.addEventListener('click', function () { answerQuestion(item); });
+      chips.appendChild(chip);
+    });
+    panelBody.appendChild(chips);
+  }
+
+  function escalateChip() {
+    var escalate = el('button', 'cc-chip cc-escalate', 'Still stuck? Talk to a person');
+    escalate.type = 'button';
+    escalate.addEventListener('click', showHandoff);
+    return escalate;
+  }
+
+  function answerQuestion(item) {
+    panelBody.querySelectorAll('.cc-chips').forEach(function (c) { c.remove(); });
+    panelBody.appendChild(el('div', 'cc-msg cc-user', item.q));
+    panelBody.appendChild(el('div', 'cc-msg cc-bot', item.a));
+
+    var chips = el('div', 'cc-chips');
+    var resolved = el('button', 'cc-chip', 'That answered it');
+    resolved.type = 'button';
+    resolved.addEventListener('click', function () {
+      panelBody.querySelectorAll('.cc-chips').forEach(function (c) { c.remove(); });
+      panelBody.appendChild(el('div', 'cc-msg cc-bot', 'Glad that helped. Ask me anything else, anytime.'));
+      panelBody.scrollTop = panelBody.scrollHeight;
+    });
+    chips.appendChild(resolved);
+    chips.appendChild(escalateChip());
+    panelBody.appendChild(chips);
+    panelBody.scrollTop = panelBody.scrollHeight;
+  }
+
+  function showHandoff() {
+    panelBody.innerHTML = '';
+    panelBody.appendChild(el('div', 'cc-msg cc-bot', "I couldn't fully answer that from the help center. Let's get you to a person on our team."));
+
+    var card = el('div', 'cc-handoff-card');
+    card.appendChild(el('div', 'cc-lead', 'Continue on WhatsApp'));
+    card.appendChild(el('p', null, "We'll open a WhatsApp chat with our support team, and bring what you already asked along with you."));
+
+    var waLink = document.createElement('a');
+    waLink.href = 'https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent("Hi, I'm on the ChamberCore site and need help beyond what the assistant could answer.");
+    waLink.target = '_blank';
+    waLink.rel = 'noopener';
+    waLink.className = 'cc-btn-whatsapp';
+    waLink.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12c0 1.85.5 3.58 1.37 5.07L2 22l5.1-1.34A9.94 9.94 0 0 0 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2Zm0 18a7.9 7.9 0 0 1-4.03-1.1l-.29-.17-3 .79.8-2.92-.19-.3A7.94 7.94 0 1 1 12 20Zm4.36-5.96c-.24-.12-1.42-.7-1.64-.78-.22-.08-.38-.12-.54.12-.16.24-.62.78-.76.94-.14.16-.28.18-.52.06-.24-.12-1.01-.37-1.92-1.18-.71-.63-1.19-1.42-1.33-1.66-.14-.24-.01-.37.11-.49.11-.11.24-.28.36-.42.12-.14.16-.24.24-.4.08-.16.04-.3-.02-.42-.06-.12-.54-1.3-.74-1.78-.19-.46-.39-.4-.54-.4h-.46c-.16 0-.42.06-.64.3-.22.24-.84.82-.84 2s.86 2.32.98 2.48c.12.16 1.7 2.6 4.12 3.64.58.25 1.03.4 1.38.51.58.18 1.11.16 1.53.1.47-.07 1.42-.58 1.62-1.14.2-.56.2-1.04.14-1.14-.06-.1-.22-.16-.46-.28Z"/></svg>Continue on WhatsApp';
+    card.appendChild(waLink);
+    panelBody.appendChild(card);
+
+    var back = el('button', 'cc-back-link', 'Back to chat');
+    back.type = 'button';
+    back.addEventListener('click', greet);
+    panelBody.appendChild(back);
+    panelBody.scrollTop = panelBody.scrollHeight;
+  }
+
+  launcherBtn.addEventListener('click', function () {
+    opened = !opened;
+    panel.hidden = !opened;
+    launcherBtn.setAttribute('aria-expanded', opened ? 'true' : 'false');
+    if (opened && !panelBody.children.length) greet();
+  });
+
+  closeBtn.addEventListener('click', function () {
+    opened = false;
+    panel.hidden = true;
+  });
+})();
+</script>
 </body>
 </html>
