@@ -5,6 +5,8 @@
 
 SET FOREIGN_KEY_CHECKS = 0;
 
+DROP TABLE IF EXISTS password_reset_tokens;
+DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS advocacy_action_log;
 DROP TABLE IF EXISTS officials;
 DROP TABLE IF EXISTS advocacy_issues;
@@ -28,8 +30,38 @@ DROP TABLE IF EXISTS directory_listings;
 DROP TABLE IF EXISTS members;
 DROP TABLE IF EXISTS org_members;
 DROP TABLE IF EXISTS organizations;
+DROP TABLE IF EXISTS users;
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- 0. Users (Credentials) — replaces Supabase Auth's auth.users
+CREATE TABLE users (
+  id VARCHAR(36) NOT NULL PRIMARY KEY,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 0b. Sessions — backs signed-in cookies (replaces Supabase Auth sessions)
+CREATE TABLE sessions (
+  id VARCHAR(64) NOT NULL PRIMARY KEY,
+  user_id VARCHAR(36) NOT NULL,
+  expires_at DATETIME NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_sessions_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 0c. Password reset tokens
+CREATE TABLE password_reset_tokens (
+  id VARCHAR(64) NOT NULL PRIMARY KEY,
+  user_id VARCHAR(36) NOT NULL,
+  expires_at DATETIME NOT NULL,
+  used_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 1. Organizations (Tenants)
 CREATE TABLE organizations (
