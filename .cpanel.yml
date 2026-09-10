@@ -2,7 +2,8 @@
 deployment:
   tasks:
     - export DEPLOYPATH=/home/chambercore/public_html
-    - /bin/cp -a . $DEPLOYPATH
+    - /usr/bin/rsync -av --delete --exclude='.git' --exclude='.next' --exclude='node_modules' ./ $DEPLOYPATH/
     - /bin/mkdir -p $DEPLOYPATH/tmp
     - /bin/touch $DEPLOYPATH/tmp/restart.txt
+
 
