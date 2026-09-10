@@ -1,0 +1,3 @@
+{
+  "/(app)/voting/new/page": "app/(app)/voting/new/page.js"
+}

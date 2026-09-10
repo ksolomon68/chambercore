@@ -1,0 +1,113 @@
+{
+  "node": {
+    "00e63a47d7dd203dbe793ca9d8793a31bffc297b21": {
+      "workers": {
+        "app/(portal)/portal/advocacy/page": {
+          "moduleId": 52013,
+          "async": false,
+          "exportedName": "logout",
+          "filename": "app/actions/auth.ts"
+        }
+      },
+      "exportedName": "logout",
+      "filename": "app/actions/auth.ts"
+    },
+    "60326232cf38865ee31a73479eaabf9915f702b28e": {
+      "workers": {
+        "app/(portal)/portal/advocacy/page": {
+          "moduleId": 52013,
+          "async": false,
+          "exportedName": "login",
+          "filename": "app/actions/auth.ts"
+        }
+      },
+      "exportedName": "login",
+      "filename": "app/actions/auth.ts"
+    },
+    "60841cf2d03016a33e6697078e2b071280336109aa": {
+      "workers": {
+        "app/(portal)/portal/advocacy/page": {
+          "moduleId": 52013,
+          "async": false,
+          "exportedName": "signup",
+          "filename": "app/actions/auth.ts"
+        }
+      },
+      "exportedName": "signup",
+      "filename": "app/actions/auth.ts"
+    },
+    "60cde61df981dec073bde29daab1118d109979193f": {
+      "workers": {
+        "app/(portal)/portal/advocacy/page": {
+          "moduleId": 52013,
+          "async": false,
+          "exportedName": "requestPasswordReset",
+          "filename": "app/actions/auth.ts"
+        }
+      },
+      "exportedName": "requestPasswordReset",
+      "filename": "app/actions/auth.ts"
+    },
+    "40155f3bba1523952990df3a463282f19ea1bd0e71": {
+      "workers": {
+        "app/(portal)/portal/advocacy/page": {
+          "moduleId": 52013,
+          "async": false,
+          "exportedName": "deleteIssue",
+          "filename": "app/actions/advocacy.ts"
+        }
+      },
+      "exportedName": "deleteIssue",
+      "filename": "app/actions/advocacy.ts"
+    },
+    "40725290224cb839c2d8002c011caa2b7fba53d3fe": {
+      "workers": {
+        "app/(portal)/portal/advocacy/page": {
+          "moduleId": 52013,
+          "async": false,
+          "exportedName": "deleteOfficial",
+          "filename": "app/actions/advocacy.ts"
+        }
+      },
+      "exportedName": "deleteOfficial",
+      "filename": "app/actions/advocacy.ts"
+    },
+    "40bc28d99b5fde038a751bbb556d6fd544377f7a8f": {
+      "workers": {
+        "app/(portal)/portal/advocacy/page": {
+          "moduleId": 52013,
+          "async": false,
+          "exportedName": "logAction",
+          "filename": "app/actions/advocacy.ts"
+        }
+      },
+      "exportedName": "logAction",
+      "filename": "app/actions/advocacy.ts"
+    },
+    "60a6301a8bca0b1d0cca44a48e97c07221b7f5a39b": {
+      "workers": {
+        "app/(portal)/portal/advocacy/page": {
+          "moduleId": 52013,
+          "async": false,
+          "exportedName": "createIssue",
+          "filename": "app/actions/advocacy.ts"
+        }
+      },
+      "exportedName": "createIssue",
+      "filename": "app/actions/advocacy.ts"
+    },
+    "60f2e30c752e5d7ee7ca981288113c0b342a8fb44e": {
+      "workers": {
+        "app/(portal)/portal/advocacy/page": {
+          "moduleId": 52013,
+          "async": false,
+          "exportedName": "createOfficial",
+          "filename": "app/actions/advocacy.ts"
+        }
+      },
+      "exportedName": "createOfficial",
+      "filename": "app/actions/advocacy.ts"
+    }
+  },
+  "edge": {}
+}

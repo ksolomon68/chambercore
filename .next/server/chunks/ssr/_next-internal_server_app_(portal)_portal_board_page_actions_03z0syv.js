@@ -1,0 +1,3 @@
+module.exports=[82797,a=>{"use strict";var b=a.i(77728);a.s([],50021),a.i(50021),a.s(["00e63a47d7dd203dbe793ca9d8793a31bffc297b21",()=>b.logout,"60326232cf38865ee31a73479eaabf9915f702b28e",()=>b.login,"60841cf2d03016a33e6697078e2b071280336109aa",()=>b.signup,"60cde61df981dec073bde29daab1118d109979193f",()=>b.requestPasswordReset],82797)}];
+
+//# sourceMappingURL=_next-internal_server_app_%28portal%29_portal_board_page_actions_03z0syv.js.map

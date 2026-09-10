@@ -1,0 +1,7 @@
+1:"$Sreact.fragment"
+2:I[74155,["/_next/static/chunks/2cuce_2_-pfti.js","/_next/static/chunks/14mrh2-p_w84d.js","/_next/static/chunks/3kwmepwl149i8.js","/_next/static/chunks/2b2cqkq3a6ckh.js"],"LoginForm"]
+3:I[22016,["/_next/static/chunks/2cuce_2_-pfti.js","/_next/static/chunks/14mrh2-p_w84d.js","/_next/static/chunks/3kwmepwl149i8.js","/_next/static/chunks/2b2cqkq3a6ckh.js"],""]
+4:I[97367,["/_next/static/chunks/2cuce_2_-pfti.js","/_next/static/chunks/14mrh2-p_w84d.js"],"OutletBoundary"]
+5:"$Sreact.suspense"
+0:{"rsc":["$","$1","c",{"children":[["$","div",null,{"children":[["$","h1",null,{"className":"font-display text-2xl font-bold text-off-white","children":"Welcome back"}],["$","p",null,{"className":"mt-1 mb-6 text-sm text-text-muted","children":"Log in to your chamber's dashboard."}],["$","$L2",null,{}],["$","div",null,{"className":"mt-6 flex flex-col items-center gap-2 text-sm text-text-dim","children":[["$","$L3",null,{"href":"/reset-password","className":"text-gold hover:text-gold-light","children":"Forgot password?"}],["$","p",null,{"children":["Don't have a chamber account yet?"," ",["$","$L3",null,{"href":"/signup","className":"text-gold hover:text-gold-light","children":"Sign up"}]]}]]}]]}],[["$","script","script-0",{"src":"/_next/static/chunks/2b2cqkq3a6ckh.js","async":true}]],["$","$L4",null,{"children":["$","$5",null,{"name":"Next.MetadataOutlet","children":"$@6"}]}]]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"bT5FWiFZp_EfKAxga8o9V"}
+6:null

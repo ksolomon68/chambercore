@@ -1,0 +1,29 @@
+{
+  "node": {
+    "00e63a47d7dd203dbe793ca9d8793a31bffc297b21": {
+      "workers": {
+        "app/(app)/settings/organization/page": {
+          "moduleId": 1679,
+          "async": false,
+          "exportedName": "logout",
+          "filename": "app/actions/auth.ts"
+        }
+      },
+      "exportedName": "logout",
+      "filename": "app/actions/auth.ts"
+    },
+    "606e1e4aad90e45ba5375544e5390c449b58eb46c6": {
+      "workers": {
+        "app/(app)/settings/organization/page": {
+          "moduleId": 1679,
+          "async": false,
+          "exportedName": "updateOrganization",
+          "filename": "app/actions/organization.ts"
+        }
+      },
+      "exportedName": "updateOrganization",
+      "filename": "app/actions/organization.ts"
+    }
+  },
+  "edge": {}
+}
