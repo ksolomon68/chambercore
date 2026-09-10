@@ -1,29 +1,33 @@
 import { requireMember } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { query, queryOne } from "@/lib/db/mysql";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { TierBadge } from "@/components/members/TierBadge";
 
 export default async function PortalDuesPage() {
   const member = await requireMember();
-  const supabase = await createClient();
 
-  const { data: pricing } = await supabase
-    .from("dues_tier_pricing")
-    .select("annual_price")
-    .eq("org_id", member.orgId)
-    .eq("tier", member.tier)
-    .maybeSingle();
+  const pricing = await queryOne<{ annual_price: number }>(
+    "SELECT annual_price FROM dues_tier_pricing WHERE org_id = ? AND tier = ?",
+    [member.orgId, member.tier]
+  );
 
-  const { data: invoices } = await supabase
-    .from("dues_invoices")
-    .select("id, description, amount, due_date, status")
-    .eq("member_id", member.id)
-    .neq("status", "void")
-    .order("due_date", { ascending: false });
+  const invoices = await query<{
+    id: string;
+    description: string;
+    amount: number;
+    due_date: string | Date;
+    status: "pending" | "paid" | "void";
+  }>(
+    `SELECT id, description, amount, due_date, status
+     FROM dues_invoices
+     WHERE member_id = ? AND status != 'void'
+     ORDER BY due_date DESC`,
+    [member.id]
+  );
 
   const today = new Date();
-  const outstanding = (invoices ?? []).filter((i) => i.status === "pending");
+  const outstanding = invoices.filter((i) => i.status === "pending");
   const outstandingTotal = outstanding.reduce(
     (sum, i) => sum + Number(i.amount),
     0,
@@ -77,7 +81,7 @@ export default async function PortalDuesPage() {
                 </tr>
               </thead>
               <tbody>
-                {(invoices ?? []).map((invoice) => {
+                {invoices.map((invoice) => {
                   const isOverdue =
                     invoice.status === "pending" &&
                     new Date(invoice.due_date) < today;
@@ -112,7 +116,7 @@ export default async function PortalDuesPage() {
                     </tr>
                   );
                 })}
-                {(!invoices || invoices.length === 0) && (
+                {invoices.length === 0 && (
                   <tr>
                     <td colSpan={4} className="px-4 py-10 text-center text-text-dim">
                       No invoices yet.

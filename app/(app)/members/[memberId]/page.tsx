@@ -1,11 +1,12 @@
 import { notFound } from "next/navigation";
 import { getCurrentOrg } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { queryOne } from "@/lib/db/mysql";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { MemberForm } from "@/components/members/MemberForm";
 import { InviteToPortalButton } from "@/components/members/InviteToPortalButton";
 import { updateMember } from "@/app/actions/members";
+import type { MemberStatus, MemberTier } from "@/lib/types/database.types";
 
 export default async function EditMemberPage({
   params,
@@ -14,16 +15,36 @@ export default async function EditMemberPage({
 }) {
   const { memberId } = await params;
   const org = await getCurrentOrg();
-  const supabase = await createClient();
 
-  const { data: member } = await supabase
-    .from("members")
-    .select("*")
-    .eq("id", memberId)
-    .eq("org_id", org!.id)
-    .maybeSingle();
+  const member = await queryOne<{
+    id: string;
+    org_id: string;
+    user_id: string | null;
+    business_name: string;
+    contact_name: string | null;
+    email: string | null;
+    phone: string | null;
+    category: string | null;
+    tier: MemberTier;
+    status: MemberStatus;
+    notes: string | null;
+  }>(
+    "SELECT id, org_id, user_id, business_name, contact_name, email, phone, category, tier, status, notes FROM members WHERE id = ? AND org_id = ?",
+    [memberId, org!.id]
+  );
 
   if (!member) notFound();
+
+  const defaultValues = {
+    businessName: member.business_name,
+    contactName: member.contact_name ?? undefined,
+    email: member.email ?? undefined,
+    phone: member.phone ?? undefined,
+    category: member.category ?? undefined,
+    tier: member.tier,
+    status: member.status,
+    notes: member.notes ?? undefined,
+  };
 
   return (
     <div>
@@ -35,7 +56,7 @@ export default async function EditMemberPage({
       </p>
       <MemberForm
         action={updateMember.bind(null, memberId)}
-        defaultValues={member}
+        defaultValues={defaultValues}
         submitLabel="Save Changes"
       />
 

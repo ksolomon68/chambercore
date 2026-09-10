@@ -1,5 +1,5 @@
 import { requireMember } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db/mysql";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -13,24 +13,32 @@ const FORMAT_LABEL: Record<string, string> = {
 
 export default async function PortalMeetingsPage() {
   const member = await requireMember();
-  const supabase = await createClient();
 
-  const { data: meetings } = await supabase
-    .from("meetings")
-    .select("id, title, meeting_type, format, location, starts_at, agenda")
-    .eq("org_id", member.orgId)
-    .gte("starts_at", new Date().toISOString())
-    .order("starts_at", { ascending: true });
+  const meetings = await query<{
+    id: string;
+    title: string;
+    meeting_type: string | null;
+    format: string;
+    location: string | null;
+    starts_at: string | Date;
+    agenda: string | null;
+  }>(
+    `SELECT id, title, meeting_type, format, location, starts_at, agenda
+     FROM meetings
+     WHERE org_id = ? AND starts_at >= NOW()
+     ORDER BY starts_at ASC`,
+    [member.orgId]
+  );
 
-  const meetingIds = (meetings ?? []).map((m) => m.id);
-  const { data: myRsvps } = meetingIds.length
-    ? await supabase
-        .from("meeting_rsvps")
-        .select("meeting_id")
-        .eq("member_id", member.id)
-        .in("meeting_id", meetingIds)
-    : { data: [] };
-  const rsvpedIds = new Set((myRsvps ?? []).map((r) => r.meeting_id));
+  const meetingIds = meetings.map((m) => m.id);
+  const myRsvps = meetingIds.length
+    ? await query<{ meeting_id: string }>(
+        `SELECT meeting_id FROM meeting_rsvps WHERE member_id = ? AND meeting_id IN (${meetingIds.map(() => "?").join(",")})`,
+        [member.id, ...meetingIds]
+      )
+    : [];
+
+  const rsvpedIds = new Set(myRsvps.map((r) => r.meeting_id));
 
   return (
     <div>
@@ -42,7 +50,7 @@ export default async function PortalMeetingsPage() {
       </p>
 
       <div className="flex flex-col gap-4">
-        {(meetings ?? []).map((meeting) => {
+        {meetings.map((meeting) => {
           const date = new Date(meeting.starts_at);
           const isRsvped = rsvpedIds.has(meeting.id);
           return (
@@ -72,7 +80,7 @@ export default async function PortalMeetingsPage() {
                       {meeting.meeting_type && (
                         <Badge tone="gold">{meeting.meeting_type}</Badge>
                       )}
-                      <Badge tone="muted">{FORMAT_LABEL[meeting.format]}</Badge>
+                      <Badge tone="muted">{FORMAT_LABEL[meeting.format] || meeting.format}</Badge>
                     </div>
                   </div>
                 </div>
@@ -99,7 +107,7 @@ export default async function PortalMeetingsPage() {
             </Card>
           );
         })}
-        {(!meetings || meetings.length === 0) && (
+        {meetings.length === 0 && (
           <Card>
             <p className="text-sm text-text-dim">No upcoming meetings.</p>
           </Card>

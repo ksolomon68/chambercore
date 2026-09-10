@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import crypto from "crypto";
+import { execute } from "@/lib/db/mysql";
 import { requireOrg } from "@/lib/auth/session";
 import { canEditMembers, canDeleteMembers } from "@/lib/auth/permissions";
 
@@ -36,16 +37,24 @@ export async function createBoardMember(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase.from("board_members").insert({
-    org_id: org.id,
-    name: parsed.data.name,
-    title: parsed.data.title ?? null,
-    member_id: parsed.data.memberId || null,
-    is_executive: parsed.data.isExecutive ?? false,
-  });
+  const boardMemberId = crypto.randomUUID();
 
-  if (error) return { error: error.message };
+  try {
+    await execute(
+      `INSERT INTO board_members (id, org_id, name, title, member_id, is_executive)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        boardMemberId,
+        org.id,
+        parsed.data.name,
+        parsed.data.title ?? null,
+        parsed.data.memberId || null,
+        parsed.data.isExecutive ? 1 : 0,
+      ]
+    );
+  } catch (error: any) {
+    return { error: error?.message || "Could not add board member." };
+  }
 
   revalidatePath("/board");
   redirect("/board");
@@ -55,12 +64,10 @@ export async function deleteBoardMember(boardMemberId: string) {
   const org = await requireOrg();
   if (!canDeleteMembers(org.role)) return;
 
-  const supabase = await createClient();
-  await supabase
-    .from("board_members")
-    .delete()
-    .eq("id", boardMemberId)
-    .eq("org_id", org.id);
+  await execute(
+    "DELETE FROM board_members WHERE id = ? AND org_id = ?",
+    [boardMemberId, org.id]
+  );
 
   revalidatePath("/board");
 }

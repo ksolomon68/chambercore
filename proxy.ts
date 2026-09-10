@@ -1,5 +1,6 @@
-import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { verifyJwt } from "@/lib/auth/jwt";
+import { AUTH_COOKIE_NAME } from "@/lib/auth/constants";
 
 const PROTECTED_PREFIXES = [
   "/dashboard",
@@ -19,61 +20,25 @@ const PROTECTED_PREFIXES = [
   "/advocacy",
 ];
 
-// Refreshes the Supabase session on every request and redirects unauthenticated
-// users away from (app) routes. This is a UX convenience, not the security
-// boundary — RLS (supabase/migrations/0006_rls_policies.sql) is the real
-// tenant-isolation guarantee, and every Server Action/route handler re-checks
-// auth itself since Proxy coverage can silently drop on refactors.
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({ request });
-
   const isProtected = PROTECTED_PREFIXES.some((prefix) =>
     request.nextUrl.pathname.startsWith(prefix),
   );
 
   if (!isProtected) {
-    return response;
+    return NextResponse.next({ request });
   }
 
-  try {
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return request.cookies.getAll();
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value }) =>
-              request.cookies.set(name, value),
-            );
-            response = NextResponse.next({ request });
-            cookiesToSet.forEach(({ name, value, options }) =>
-              response.cookies.set(name, value, options),
-            );
-          },
-        },
-      },
-    );
+  const sessionCookie = request.cookies.get(AUTH_COOKIE_NAME)?.value;
+  const user = sessionCookie ? verifyJwt(sessionCookie) : null;
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      const loginUrl = new URL("/login", request.url);
-      loginUrl.searchParams.set("next", request.nextUrl.pathname);
-      return NextResponse.redirect(loginUrl);
-    }
-  } catch (error) {
-    console.error("Proxy auth error:", error);
+  if (!user || !user.sub) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("next", request.nextUrl.pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  return response;
+  return NextResponse.next({ request });
 }
 
 export const config = {

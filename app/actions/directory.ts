@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { execute } from "@/lib/db/mysql";
 import { requireOrg } from "@/lib/auth/session";
 import { canEditMembers } from "@/lib/auth/permissions";
 
@@ -38,21 +38,23 @@ export async function updateListing(
     return { error: "Invalid input." };
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("directory_listings")
-    .update({
-      is_public: parsed.data.isPublic === "on",
-      featured: parsed.data.featured === "on",
-      description: parsed.data.description ?? null,
-      website_url: parsed.data.websiteUrl ?? null,
-      address: parsed.data.address ?? null,
-    })
-    .eq("member_id", memberId)
-    .eq("org_id", org.id);
-
-  if (error) {
-    return { error: error.message };
+  try {
+    await execute(
+      `UPDATE directory_listings
+       SET is_public = ?, featured = ?, description = ?, website_url = ?, address = ?
+       WHERE member_id = ? AND org_id = ?`,
+      [
+        parsed.data.isPublic === "on" ? 1 : 0,
+        parsed.data.featured === "on" ? 1 : 0,
+        parsed.data.description ?? null,
+        parsed.data.websiteUrl ?? null,
+        parsed.data.address ?? null,
+        memberId,
+        org.id,
+      ]
+    );
+  } catch (error: any) {
+    return { error: error?.message || "Could not update listing." };
   }
 
   revalidatePath("/directory");

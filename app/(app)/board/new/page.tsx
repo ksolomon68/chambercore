@@ -1,17 +1,16 @@
 import { getCurrentOrg } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db/mysql";
 import { BoardMemberForm } from "@/components/board/BoardMemberForm";
 
 export default async function NewBoardMemberPage() {
   const org = await getCurrentOrg();
-  const supabase = await createClient();
 
-  const { data: members } = await supabase
-    .from("members")
-    .select("id, business_name")
-    .eq("org_id", org!.id)
-    .neq("status", "archived")
-    .order("business_name", { ascending: true });
+  const members = org?.id
+    ? await query<any>(
+        "SELECT id, business_name FROM members WHERE org_id = ? AND status != 'archived' ORDER BY business_name ASC",
+        [org.id]
+      )
+    : [];
 
   return (
     <div>
@@ -21,7 +20,8 @@ export default async function NewBoardMemberPage() {
       <p className="mt-1 mb-6 text-sm text-text-muted">
         Add a person to the board roster, optionally linked to their business.
       </p>
-      <BoardMemberForm members={members ?? []} />
+      <BoardMemberForm members={members} />
     </div>
   );
 }
+

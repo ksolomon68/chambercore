@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireMember } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db/mysql";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { ButtonLink } from "@/components/ui/Button";
@@ -8,25 +8,35 @@ import { Tabs } from "@/components/ui/Tabs";
 
 export default async function PortalMarketplacePage() {
   const member = await requireMember();
-  const supabase = await createClient();
 
-  const { data: listings } = await supabase
-    .from("marketplace_listings")
-    .select(
-      "id, member_id, kind, title, category, description, discount_label, promo_code, expires_at, employment_type, location, pay_range, status",
-    )
-    .eq("org_id", member.orgId)
-    .eq("status", "approved")
-    .order("created_at", { ascending: false });
+  const listings = await query<{
+    id: string;
+    member_id: string;
+    kind: "deal" | "job";
+    title: string;
+    category: string | null;
+    description: string | null;
+    discount_label: string | null;
+    promo_code: string | null;
+    expires_at: string | Date | null;
+    employment_type: string | null;
+    location: string | null;
+    pay_range: string | null;
+    status: string;
+    business_name: string;
+  }>(
+    `SELECT l.id, l.member_id, l.kind, l.title, l.category, l.description,
+            l.discount_label, l.promo_code, l.expires_at, l.employment_type,
+            l.location, l.pay_range, l.status, m.business_name
+     FROM marketplace_listings l
+     LEFT JOIN members m ON m.id = l.member_id
+     WHERE l.org_id = ? AND l.status = 'approved'
+     ORDER BY l.created_at DESC`,
+    [member.orgId]
+  );
 
-  const memberIds = Array.from(new Set((listings ?? []).map((l) => l.member_id)));
-  const { data: members } = memberIds.length
-    ? await supabase.from("members").select("id, business_name").in("id", memberIds)
-    : { data: [] };
-  const memberById = new Map((members ?? []).map((m) => [m.id, m]));
-
-  const deals = (listings ?? []).filter((l) => l.kind === "deal");
-  const jobs = (listings ?? []).filter((l) => l.kind === "job");
+  const deals = listings.filter((l) => l.kind === "deal");
+  const jobs = listings.filter((l) => l.kind === "job");
 
   const EMPLOYMENT_LABEL: Record<string, string> = {
     full_time: "Full-Time",
@@ -67,7 +77,7 @@ export default async function PortalMarketplacePage() {
                       {deal.title}
                     </div>
                     <div className="text-xs text-text-dim">
-                      {memberById.get(deal.member_id)?.business_name}
+                      {deal.business_name}
                     </div>
                     {deal.description && (
                       <p className="mt-2 text-sm text-text-muted">
@@ -105,7 +115,7 @@ export default async function PortalMarketplacePage() {
                         {job.title}
                       </div>
                       <div className="text-xs text-text-dim">
-                        {memberById.get(job.member_id)?.business_name}
+                        {job.business_name}
                       </div>
                       <div className="mt-1 flex flex-wrap gap-2 text-xs text-text-muted">
                         {job.employment_type && (

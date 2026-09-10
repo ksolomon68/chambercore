@@ -1,16 +1,18 @@
 import { requireMember } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { queryOne } from "@/lib/db/mysql";
 import { ProfileForm } from "@/components/portal/ProfileForm";
 
 export default async function PortalProfilePage() {
   const member = await requireMember();
-  const supabase = await createClient();
 
-  const { data: listing } = await supabase
-    .from("directory_listings")
-    .select("description, website_url, address")
-    .eq("member_id", member.id)
-    .maybeSingle();
+  const listing = await queryOne<{
+    description: string | null;
+    website_url: string | null;
+    address: string | null;
+  }>(
+    "SELECT description, website_url, address FROM directory_listings WHERE member_id = ?",
+    [member.id]
+  );
 
   return (
     <div>

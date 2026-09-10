@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getCurrentUser } from "@/lib/auth/session";
+import { queryOne } from "@/lib/db/mysql";
 import { InviteAcceptButton } from "@/components/auth/InviteAcceptButton";
 
 export default async function InvitePage({
@@ -10,17 +10,18 @@ export default async function InvitePage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
-  const admin = createAdminClient();
-  const { data: invite } = await admin
-    .from("org_invites")
-    .select("org_id, email, role, accepted_at, expires_at")
-    .eq("token", token)
-    .maybeSingle();
+  const invite = await queryOne<{
+    org_id: string;
+    email: string;
+    role: string;
+    accepted_at: string | null;
+    expires_at: string;
+  }>(
+    "SELECT org_id, email, role, accepted_at, expires_at FROM org_invites WHERE token = ? LIMIT 1",
+    [token]
+  );
 
   if (!invite) {
     return (
@@ -35,11 +36,10 @@ export default async function InvitePage({
     );
   }
 
-  const { data: org } = await admin
-    .from("organizations")
-    .select("name")
-    .eq("id", invite.org_id)
-    .maybeSingle();
+  const org = await queryOne<{ name: string }>(
+    "SELECT name FROM organizations WHERE id = ? LIMIT 1",
+    [invite.org_id]
+  );
 
   const orgName = org?.name ?? "your chamber";
 
@@ -91,3 +91,4 @@ export default async function InvitePage({
     </div>
   );
 }
+

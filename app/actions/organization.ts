@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { execute } from "@/lib/db/mysql";
 import { requireRole } from "@/lib/auth/session";
 
 export type FormState = { error?: string; success?: boolean } | undefined;
@@ -29,13 +29,14 @@ export async function updateOrganization(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("organizations")
-    .update({ name: parsed.data.name, primary_color: parsed.data.primaryColor })
-    .eq("id", org.id);
-
-  if (error) return { error: error.message };
+  try {
+    await execute(
+      "UPDATE organizations SET name = ?, primary_color = ? WHERE id = ?",
+      [parsed.data.name, parsed.data.primaryColor, org.id]
+    );
+  } catch (error: any) {
+    return { error: error?.message || "Could not update organization." };
+  }
 
   revalidatePath("/settings/organization");
   return { success: true };

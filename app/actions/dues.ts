@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import crypto from "crypto";
+import { execute, queryOne } from "@/lib/db/mysql";
 import { requireOrg, requireRole } from "@/lib/auth/session";
 import { canEditMembers, canDeleteMembers } from "@/lib/auth/permissions";
 import type { DuesPaymentMethod } from "@/lib/types/database.types";
@@ -39,25 +40,31 @@ export async function createInvoice(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const supabase = await createClient();
-  const { data: member } = await supabase
-    .from("members")
-    .select("id")
-    .eq("id", parsed.data.memberId)
-    .eq("org_id", org.id)
-    .maybeSingle();
+  const member = await queryOne<{ id: string }>(
+    "SELECT id FROM members WHERE id = ? AND org_id = ?",
+    [parsed.data.memberId, org.id]
+  );
 
   if (!member) return { error: "Member not found." };
 
-  const { error } = await supabase.from("dues_invoices").insert({
-    org_id: org.id,
-    member_id: parsed.data.memberId,
-    description: parsed.data.description,
-    amount: parsed.data.amount,
-    due_date: parsed.data.dueDate,
-  });
+  const invoiceId = crypto.randomUUID();
 
-  if (error) return { error: error.message };
+  try {
+    await execute(
+      `INSERT INTO dues_invoices (id, org_id, member_id, description, amount, due_date)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        invoiceId,
+        org.id,
+        parsed.data.memberId,
+        parsed.data.description,
+        parsed.data.amount,
+        parsed.data.dueDate,
+      ]
+    );
+  } catch (error: any) {
+    return { error: error?.message || "Could not create invoice." };
+  }
 
   revalidatePath("/dues");
   redirect("/dues");
@@ -72,16 +79,12 @@ export async function markInvoicePaid(invoiceId: string, formData: FormData) {
     ? (rawMethod as DuesPaymentMethod)
     : null;
 
-  const supabase = await createClient();
-  await supabase
-    .from("dues_invoices")
-    .update({
-      status: "paid",
-      paid_at: new Date().toISOString(),
-      payment_method: method,
-    })
-    .eq("id", invoiceId)
-    .eq("org_id", org.id);
+  await execute(
+    `UPDATE dues_invoices
+     SET status = 'paid', paid_at = NOW(), payment_method = ?
+     WHERE id = ? AND org_id = ?`,
+    [method, invoiceId, org.id]
+  );
 
   revalidatePath("/dues");
 }
@@ -90,12 +93,10 @@ export async function voidInvoice(invoiceId: string) {
   const org = await requireOrg();
   if (!canDeleteMembers(org.role)) return;
 
-  const supabase = await createClient();
-  await supabase
-    .from("dues_invoices")
-    .update({ status: "void" })
-    .eq("id", invoiceId)
-    .eq("org_id", org.id);
+  await execute(
+    "UPDATE dues_invoices SET status = 'void' WHERE id = ? AND org_id = ?",
+    [invoiceId, org.id]
+  );
 
   revalidatePath("/dues");
 }
@@ -122,21 +123,23 @@ export async function updateTierPricing(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const supabase = await createClient();
-  const rows = (["bronze", "silver", "gold"] as const)
-    .filter((tier) => parsed.data[tier] !== undefined)
-    .map((tier) => ({
-      org_id: org.id,
-      tier,
-      annual_price: parsed.data[tier],
-    }));
+  const tiers = (["bronze", "silver", "gold"] as const).filter(
+    (tier) => parsed.data[tier] !== undefined
+  );
 
-  if (rows.length > 0) {
-    const { error } = await supabase
-      .from("dues_tier_pricing")
-      .upsert(rows, { onConflict: "org_id,tier" });
-
-    if (error) return { error: error.message };
+  try {
+    for (const tier of tiers) {
+      const price = parsed.data[tier];
+      const tierPricingId = crypto.randomUUID();
+      await execute(
+        `INSERT INTO dues_tier_pricing (id, org_id, tier, annual_price)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE annual_price = VALUES(annual_price)`,
+        [tierPricingId, org.id, tier, price]
+      );
+    }
+  } catch (error: any) {
+    return { error: error?.message || "Could not update tier pricing." };
   }
 
   revalidatePath("/dues");

@@ -1,5 +1,5 @@
 import { requireMember } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db/mysql";
 import { Tabs } from "@/components/ui/Tabs";
 import { DocumentGrid } from "@/components/documents/DocumentGrid";
 import type { DocumentCategory } from "@/lib/types/database.types";
@@ -14,13 +14,22 @@ const CATEGORIES: { key: DocumentCategory | "all"; label: string }[] = [
 
 export default async function PortalDocumentsPage() {
   const member = await requireMember();
-  const supabase = await createClient();
 
-  const { data: documents } = await supabase
-    .from("documents")
-    .select("id, title, category, file_size, created_at")
-    .eq("org_id", member.orgId)
-    .order("created_at", { ascending: false });
+  const documents = await query<{
+    id: string;
+    title: string;
+    category: DocumentCategory;
+    file_size: number | null;
+    created_at: string | Date;
+  }>(
+    "SELECT id, title, category, file_size, created_at FROM documents WHERE org_id = ? ORDER BY created_at DESC",
+    [member.orgId]
+  );
+
+  const formattedDocs = documents.map((d) => ({
+    ...d,
+    created_at: d.created_at instanceof Date ? d.created_at.toISOString() : String(d.created_at),
+  }));
 
   return (
     <div>
@@ -36,7 +45,7 @@ export default async function PortalDocumentsPage() {
           label,
           content: (
             <DocumentGrid
-              documents={(documents ?? []).filter(
+              documents={formattedDocs.filter(
                 (d) => key === "all" || d.category === key,
               )}
             />

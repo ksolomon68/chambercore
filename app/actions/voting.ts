@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import crypto from "crypto";
+import { execute, queryOne, transaction } from "@/lib/db/mysql";
 import { requireOrg, requireMember } from "@/lib/auth/session";
 import { canEditMembers, canDeleteMembers } from "@/lib/auth/permissions";
 
@@ -43,32 +44,38 @@ export async function createVote(
     return { error: "Add at least two options." };
   }
 
-  const supabase = await createClient();
-  const { data: vote, error } = await supabase
-    .from("votes")
-    .insert({
-      org_id: org.id,
-      title: parsed.data.title,
-      description: parsed.data.description ?? null,
-      closes_at: parsed.data.closesAt
-        ? new Date(parsed.data.closesAt).toISOString()
-        : null,
-    })
-    .select()
-    .single();
+  const voteId = crypto.randomUUID();
+  const closesAt = parsed.data.closesAt ? new Date(parsed.data.closesAt) : null;
 
-  if (error || !vote) {
-    return { error: error?.message ?? "Could not create vote." };
+  try {
+    await transaction(async (conn) => {
+      // 1. Insert Vote
+      await conn.execute(
+        `INSERT INTO votes (id, org_id, title, description, closes_at, status)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          voteId,
+          org.id,
+          parsed.data.title,
+          parsed.data.description ?? null,
+          closesAt,
+          "open",
+        ]
+      );
+
+      // 2. Insert Options
+      for (let i = 0; i < options.length; i++) {
+        const optionId = crypto.randomUUID();
+        await conn.execute(
+          `INSERT INTO vote_options (id, org_id, vote_id, label, position)
+           VALUES (?, ?, ?, ?, ?)`,
+          [optionId, org.id, voteId, options[i], i]
+        );
+      }
+    });
+  } catch (error: any) {
+    return { error: error?.message || "Could not create vote." };
   }
-
-  await supabase.from("vote_options").insert(
-    options.map((label, i) => ({
-      org_id: org.id,
-      vote_id: vote.id,
-      label,
-      position: i,
-    })),
-  );
 
   revalidatePath("/voting");
   redirect("/voting");
@@ -78,12 +85,10 @@ export async function closeVote(voteId: string) {
   const org = await requireOrg();
   if (!canDeleteMembers(org.role)) return;
 
-  const supabase = await createClient();
-  await supabase
-    .from("votes")
-    .update({ status: "closed" })
-    .eq("id", voteId)
-    .eq("org_id", org.id);
+  await execute(
+    "UPDATE votes SET status = 'closed' WHERE id = ? AND org_id = ?",
+    [voteId, org.id]
+  );
 
   revalidatePath("/voting");
   revalidatePath("/board");
@@ -94,22 +99,21 @@ export async function castVote(voteId: string, formData: FormData) {
   const optionId = String(formData.get("optionId") || "");
   if (!optionId) return;
 
-  const supabase = await createClient();
-  const { data: boardMember } = await supabase
-    .from("board_members")
-    .select("id")
-    .eq("org_id", member.orgId)
-    .eq("member_id", member.id)
-    .maybeSingle();
+  const boardMember = await queryOne<{ id: string }>(
+    "SELECT id FROM board_members WHERE org_id = ? AND member_id = ?",
+    [member.orgId, member.id]
+  );
 
   if (!boardMember) return;
 
-  await supabase.from("vote_casts").insert({
-    org_id: member.orgId,
-    vote_id: voteId,
-    option_id: optionId,
-    board_member_id: boardMember.id,
-  });
+  const castId = crypto.randomUUID();
+
+  await execute(
+    `INSERT INTO vote_casts (id, org_id, vote_id, option_id, board_member_id)
+     VALUES (?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE option_id = VALUES(option_id)`,
+    [castId, member.orgId, voteId, optionId, boardMember.id]
+  );
 
   revalidatePath("/portal/voting");
 }

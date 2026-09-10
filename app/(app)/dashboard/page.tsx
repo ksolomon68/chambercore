@@ -1,32 +1,30 @@
 import { getCurrentOrg } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { queryOne } from "@/lib/db/mysql";
 import { StatCard } from "@/components/ui/StatCard";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Card } from "@/components/ui/Card";
 
 export default async function DashboardPage() {
   const org = await getCurrentOrg();
-  const supabase = await createClient();
 
-  const { count: activeCount } = await supabase
-    .from("members")
-    .select("id", { count: "exact", head: true })
-    .eq("org_id", org!.id)
-    .eq("status", "active");
+  const counts = await queryOne<{
+    active_count: number;
+    pending_count: number;
+    lapsed_count: number;
+  }>(
+    `SELECT
+       SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_count,
+       SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_count,
+       SUM(CASE WHEN status = 'lapsed' THEN 1 ELSE 0 END) as lapsed_count
+     FROM members
+     WHERE org_id = ? AND status != 'archived'`,
+    [org!.id]
+  );
 
-  const { count: pendingCount } = await supabase
-    .from("members")
-    .select("id", { count: "exact", head: true })
-    .eq("org_id", org!.id)
-    .eq("status", "pending");
-
-  const { count: lapsedCount } = await supabase
-    .from("members")
-    .select("id", { count: "exact", head: true })
-    .eq("org_id", org!.id)
-    .eq("status", "lapsed");
-
-  const totalMembers = (activeCount ?? 0) + (pendingCount ?? 0) + (lapsedCount ?? 0);
+  const activeCount = Number(counts?.active_count ?? 0);
+  const pendingCount = Number(counts?.pending_count ?? 0);
+  const lapsedCount = Number(counts?.lapsed_count ?? 0);
+  const totalMembers = activeCount + pendingCount + lapsedCount;
 
   return (
     <div>
@@ -38,9 +36,9 @@ export default async function DashboardPage() {
       </p>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard label="Active Members" value={activeCount ?? 0} />
-        <StatCard label="Pending" value={pendingCount ?? 0} />
-        <StatCard label="Lapsed" value={lapsedCount ?? 0} />
+        <StatCard label="Active Members" value={activeCount} />
+        <StatCard label="Pending" value={pendingCount} />
+        <StatCard label="Lapsed" value={lapsedCount} />
       </div>
 
       <Card className="mt-6">

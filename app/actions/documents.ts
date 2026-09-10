@@ -3,13 +3,18 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import crypto from "crypto";
+import path from "path";
+import fs from "fs/promises";
+import { queryOne, execute } from "@/lib/db/mysql";
 import { requireOrg, getCurrentUser } from "@/lib/auth/session";
 import { canEditMembers, canDeleteMembers } from "@/lib/auth/permissions";
 
 export type FormState = { error?: string; success?: boolean } | undefined;
 
 const CategorySchema = z.enum(["governing", "minutes", "financial", "policies", "other"]);
+
+const UPLOAD_BASE_DIR = path.join(process.cwd(), "uploads", "documents");
 
 export async function uploadDocument(
   _prevState: FormState,
@@ -31,30 +36,40 @@ export async function uploadDocument(
   const parsedCategory = CategorySchema.safeParse(formData.get("category"));
   const category = parsedCategory.success ? parsedCategory.data : "other";
 
-  const supabase = await createClient();
   const user = await getCurrentUser();
+  const documentId = crypto.randomUUID();
+  const uniqueFileName = `${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+  const relativePath = path.join(org.id, uniqueFileName).replace(/\\/g, "/");
+  const targetDir = path.join(UPLOAD_BASE_DIR, org.id);
+  const targetFilePath = path.join(targetDir, uniqueFileName);
 
-  const path = `${org.id}/${crypto.randomUUID()}-${file.name}`;
-  const { error: uploadError } = await supabase.storage
-    .from("documents")
-    .upload(path, file, { contentType: file.type || undefined });
+  try {
+    await fs.mkdir(targetDir, { recursive: true });
+    const buffer = Buffer.from(await file.arrayBuffer());
+    await fs.writeFile(targetFilePath, buffer);
 
-  if (uploadError) return { error: uploadError.message };
-
-  const { error: insertError } = await supabase.from("documents").insert({
-    org_id: org.id,
-    title,
-    category,
-    file_path: path,
-    file_name: file.name,
-    file_size: file.size,
-    content_type: file.type || null,
-    uploaded_by: user?.id ?? null,
-  });
-
-  if (insertError) {
-    await supabase.storage.from("documents").remove([path]);
-    return { error: insertError.message };
+    await execute(
+      `INSERT INTO documents (
+        id, org_id, title, category, file_path, file_name, file_size, content_type, uploaded_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        documentId,
+        org.id,
+        title,
+        category,
+        relativePath,
+        file.name,
+        file.size,
+        file.type || null,
+        user?.id ?? null,
+      ]
+    );
+  } catch (error: any) {
+    console.error("Document upload error:", error);
+    try {
+      await fs.unlink(targetFilePath);
+    } catch {}
+    return { error: error?.message || "Could not upload document." };
   }
 
   revalidatePath("/documents");
@@ -65,18 +80,24 @@ export async function deleteDocument(documentId: string) {
   const org = await requireOrg();
   if (!canDeleteMembers(org.role)) return;
 
-  const supabase = await createClient();
-  const { data: doc } = await supabase
-    .from("documents")
-    .select("file_path")
-    .eq("id", documentId)
-    .eq("org_id", org.id)
-    .maybeSingle();
+  const doc = await queryOne<{ file_path: string }>(
+    "SELECT file_path FROM documents WHERE id = ? AND org_id = ?",
+    [documentId, org.id]
+  );
 
   if (!doc) return;
 
-  await supabase.storage.from("documents").remove([doc.file_path]);
-  await supabase.from("documents").delete().eq("id", documentId).eq("org_id", org.id);
+  try {
+    const fullPath = path.join(UPLOAD_BASE_DIR, doc.file_path);
+    await fs.unlink(fullPath);
+  } catch (err) {
+    console.warn("Could not delete file from disk:", err);
+  }
+
+  await execute("DELETE FROM documents WHERE id = ? AND org_id = ?", [
+    documentId,
+    org.id,
+  ]);
 
   revalidatePath("/documents");
 }

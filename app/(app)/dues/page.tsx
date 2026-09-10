@@ -1,5 +1,5 @@
 import { getCurrentOrg } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db/mysql";
 import { canEditMembers, canDeleteMembers } from "@/lib/auth/permissions";
 import { StatCard } from "@/components/ui/StatCard";
 import { Card } from "@/components/ui/Card";
@@ -11,61 +11,63 @@ import type { MemberTier } from "@/lib/types/database.types";
 
 export default async function DuesPage() {
   const org = await getCurrentOrg();
-  const supabase = await createClient();
 
-  const { data: invoices } = await supabase
-    .from("dues_invoices")
-    .select("id, member_id, description, amount, due_date, status, paid_at")
-    .eq("org_id", org!.id)
-    .order("due_date", { ascending: true });
-
-  const memberIds = Array.from(
-    new Set((invoices ?? []).map((i) => i.member_id)),
+  const invoices = await query<{
+    id: string;
+    member_id: string;
+    description: string;
+    amount: number;
+    due_date: string | Date;
+    status: "pending" | "paid" | "void";
+    paid_at: string | Date | null;
+    business_name: string;
+  }>(
+    `SELECT i.id, i.member_id, i.description, i.amount, i.due_date, i.status, i.paid_at,
+            m.business_name
+     FROM dues_invoices i
+     LEFT JOIN members m ON m.id = i.member_id
+     WHERE i.org_id = ?
+     ORDER BY i.due_date ASC`,
+    [org!.id]
   );
-  const { data: invoiceMembers } = memberIds.length
-    ? await supabase
-        .from("members")
-        .select("id, business_name")
-        .in("id", memberIds)
-    : { data: [] };
-  const memberById = new Map((invoiceMembers ?? []).map((m) => [m.id, m]));
 
-  const { data: pricingRows } = await supabase
-    .from("dues_tier_pricing")
-    .select("tier, annual_price")
-    .eq("org_id", org!.id);
+  const pricingRows = await query<{ tier: MemberTier; annual_price: number | null }>(
+    "SELECT tier, annual_price FROM dues_tier_pricing WHERE org_id = ?",
+    [org!.id]
+  );
+
   const priceByTier: Record<MemberTier, number | null> = {
     bronze: null,
     silver: null,
     gold: null,
   };
-  (pricingRows ?? []).forEach((p) => {
+  pricingRows.forEach((p) => {
     priceByTier[p.tier] = p.annual_price;
   });
 
-  const { data: tierMembers } = await supabase
-    .from("members")
-    .select("tier")
-    .eq("org_id", org!.id)
-    .neq("status", "archived");
+  const tierRows = await query<{ tier: MemberTier }>(
+    "SELECT tier FROM members WHERE org_id = ? AND status != 'archived'",
+    [org!.id]
+  );
+
   const countByTier: Record<MemberTier, number> = {
     bronze: 0,
     silver: 0,
     gold: 0,
   };
-  (tierMembers ?? []).forEach((m) => {
+  tierRows.forEach((m) => {
     countByTier[m.tier]++;
   });
 
   const today = new Date();
   const yearStart = new Date(today.getFullYear(), 0, 1);
 
-  const paidThisYear = (invoices ?? []).filter(
+  const paidThisYear = invoices.filter(
     (i) => i.status === "paid" && i.paid_at && new Date(i.paid_at) >= yearStart,
   );
   const collectedYTD = paidThisYear.reduce((sum, i) => sum + Number(i.amount), 0);
 
-  const pending = (invoices ?? []).filter((i) => i.status === "pending");
+  const pending = invoices.filter((i) => i.status === "pending");
   const outstandingTotal = pending.reduce((sum, i) => sum + Number(i.amount), 0);
 
   const overdue = pending.filter((i) => new Date(i.due_date) < today);
@@ -123,12 +125,11 @@ export default async function DuesPage() {
               </thead>
               <tbody>
                 {pending.map((invoice) => {
-                  const member = memberById.get(invoice.member_id);
                   const isOverdue = new Date(invoice.due_date) < today;
                   return (
                     <tr key={invoice.id} className="border-t border-card-border">
                       <td className="px-4 py-3 font-medium text-off-white">
-                        {member?.business_name ?? "—"}
+                        {invoice.business_name ?? "—"}
                       </td>
                       <td className="px-4 py-3 text-off-white">
                         ${Number(invoice.amount).toLocaleString()}

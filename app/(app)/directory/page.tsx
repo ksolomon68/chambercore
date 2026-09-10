@@ -1,24 +1,31 @@
 import { getCurrentOrg } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db/mysql";
 import { ListingRow } from "@/components/directory/ListingRow";
 
 export default async function DirectoryAdminPage() {
   const org = await getCurrentOrg();
-  const supabase = await createClient();
 
-  const { data: members } = await supabase
-    .from("members")
-    .select("id, business_name, category, status")
-    .eq("org_id", org!.id)
-    .neq("status", "archived")
-    .order("business_name", { ascending: true });
-
-  const { data: listings } = await supabase
-    .from("directory_listings")
-    .select("*")
-    .eq("org_id", org!.id);
-
-  const listingByMemberId = new Map((listings ?? []).map((l) => [l.member_id, l]));
+  const rows = await query<{
+    id: string;
+    business_name: string;
+    category: string | null;
+    listing_id: string | null;
+    is_public: number | boolean;
+    featured: number | boolean;
+    description: string | null;
+    website_url: string | null;
+    address: string | null;
+    logo_url: string | null;
+  }>(
+    `SELECT m.id, m.business_name, m.category,
+            dl.id as listing_id, dl.is_public, dl.featured, dl.description,
+            dl.website_url, dl.address, dl.logo_url
+     FROM members m
+     LEFT JOIN directory_listings dl ON dl.member_id = m.id AND dl.org_id = m.org_id
+     WHERE m.org_id = ? AND m.status != 'archived'
+     ORDER BY m.business_name ASC`,
+    [org!.id]
+  );
 
   return (
     <div>
@@ -31,20 +38,31 @@ export default async function DirectoryAdminPage() {
       </p>
 
       <div className="flex flex-col gap-4">
-        {members?.map((m) => {
-          const listing = listingByMemberId.get(m.id);
-          if (!listing) return null;
+        {rows.map((row) => {
+          const listing = {
+            id: row.listing_id || row.id,
+            org_id: org!.id,
+            member_id: row.id,
+            is_public: Boolean(row.is_public),
+            featured: Boolean(row.featured),
+            description: row.description,
+            website_url: row.website_url,
+            address: row.address,
+            logo_url: row.logo_url,
+            updated_at: new Date().toISOString(),
+          };
+
           return (
             <ListingRow
-              key={m.id}
-              memberId={m.id}
-              businessName={m.business_name}
-              category={m.category}
+              key={row.id}
+              memberId={row.id}
+              businessName={row.business_name}
+              category={row.category}
               listing={listing}
             />
           );
         })}
-        {(!members || members.length === 0) && (
+        {rows.length === 0 && (
           <p className="text-sm text-text-dim">
             No members yet. Add members first, then curate their directory
             listings here.

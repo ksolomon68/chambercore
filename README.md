@@ -4,8 +4,7 @@ A multi-tenant SaaS platform for chambers of commerce. Any number of chambers
 can sign up, each fully isolated from the others, on Starter / Professional /
 Enterprise plans matching the pricing on the homepage.
 
-Stack: Next.js (App Router) + Supabase (Postgres, Auth, Row-Level Security) +
-Stripe.
+Stack: Next.js (App Router) + MySQL (`mysql2/promise`) + Stripe.
 
 `reference/` holds the original static HTML mockups this app was built from
 (marketing copy, pricing, and the dashboard UI vision) — kept for design
@@ -13,25 +12,29 @@ reference only, not served by the app.
 
 ## Setup
 
-### 1. Supabase project
+### 1. MySQL Database
 
-1. Create a project at [supabase.com](https://supabase.com) (or via the
-   Supabase MCP tools if available in your environment).
-2. Apply the migrations in `supabase/migrations/` in order, either with the
-   Supabase CLI:
+1. Create a MySQL database (e.g. via cPanel MySQL Databases or local MySQL).
+2. Import `schema_mysql.sql` into your database (using phpMyAdmin, MySQL Workbench, or CLI):
    ```bash
-   supabase link --project-ref <your-project-ref>
-   supabase db push
+   mysql -u <user> -p <database_name> < schema_mysql.sql
    ```
-   or by pasting each file's contents into the SQL editor in order.
-3. Regenerate `lib/types/database.types.ts` from the live schema:
-   ```bash
-   supabase gen types typescript --project-id <your-project-ref> > lib/types/database.types.ts
-   ```
-   (until then, the hand-written types in that file are kept manually in
-   sync with the migrations).
 
-### 2. Stripe
+### 2. Environment Variables
+
+Copy `.env.local.example` to `.env.local` and fill in:
+
+- `MYSQL_HOST` — database host (e.g., `localhost`).
+- `MYSQL_PORT` — port (`3306`).
+- `MYSQL_USER` — database username.
+- `MYSQL_PASSWORD` — database user password.
+- `MYSQL_DATABASE` — database name.
+- `JWT_SECRET` — random 32+ character string for signing session JWTs.
+- `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` — from your Stripe dashboard.
+- `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PROFESSIONAL` — the Price IDs from Stripe.
+- `NEXT_PUBLIC_SITE_URL` — `http://localhost:3000` in development or your domain in production.
+
+### 3. Stripe Setup
 
 1. Create two recurring Prices in test mode: Starter ($299/mo) and
    Professional ($499/mo).
@@ -43,17 +46,6 @@ reference only, not served by the app.
    stripe listen --forward-to localhost:3000/api/stripe/webhook
    ```
 
-### 3. Environment variables
-
-Copy `.env.local.example` to `.env.local` and fill in:
-
-- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-  `SUPABASE_SERVICE_ROLE_KEY` — from your Supabase project settings.
-- `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` — from your Stripe dashboard.
-- `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PROFESSIONAL` — the Price IDs from
-  step 2 above.
-- `NEXT_PUBLIC_SITE_URL` — `http://localhost:3000` in development.
-
 ### 4. Run
 
 ```bash
@@ -61,21 +53,16 @@ npm install
 npm run dev
 ```
 
-## Architecture notes
+## Architecture Notes
 
 - **Multi-tenancy**: every chamber is a row in `organizations`. Isolation is
-  enforced by Postgres Row-Level Security (`supabase/migrations/0006_rls_policies.sql`)
-  using `is_org_member()`/`org_role()` helper functions — this is the real
-  security boundary, not the app layer.
+  enforced at the query and transaction layer with explicit multi-tenant `org_id`
+  foreign keys and session verification in `lib/auth/session.ts`.
+- **Authentication**: Built-in HMAC-SHA256 JWT sessions stored in `httpOnly` secure cookies (`cc_session`), with password hashing via Node.js native `crypto.scrypt` and constant-time verification.
 - **Roles**: `owner` / `admin` / `staff` per organization, stored in
-  `org_members`. See `lib/auth/permissions.ts`.
+  `org_members`. See `lib/auth/permissions.ts`. Member portal users are authenticated via `members` records.
+- **File Storage**: Documents are uploaded and managed via local filesystem storage under `uploads/documents/` and served via streaming API route `/api/documents/[id]/download` with strict org-level authorization checks.
 - **Billing**: Stripe subscriptions sync into `subscriptions` and
   `organizations.plan_tier`/`member_limit` via the webhook handler
-  (`app/api/stripe/webhook/route.ts`). Member-count limits are enforced both
-  in the app (`app/actions/members.ts`) and as a Postgres trigger
-  (`enforce_member_limit` in `0004_subscriptions.sql`) as a hard backstop.
-- **Scope**: this phase implements the core SaaS foundation — auth,
-  multi-tenant orgs, billing, Member Management, and Business Directory. The
-  other modules referenced on the marketing homepage (events, dues, board
-  portal, legislative center, marketplace, analytics, etc.) are shown in the
-  app's navigation with a "Soon" badge but not yet implemented.
+  (`app/api/stripe/webhook/route.ts`). Member-count limits are enforced in `app/actions/members.ts`.
+

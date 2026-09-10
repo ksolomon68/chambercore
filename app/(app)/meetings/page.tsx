@@ -1,5 +1,5 @@
 import { getCurrentOrg } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db/mysql";
 import { canDeleteMembers } from "@/lib/auth/permissions";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -15,31 +15,41 @@ const FORMAT_LABEL: Record<string, string> = {
 
 export default async function MeetingsPage() {
   const org = await getCurrentOrg();
-  const supabase = await createClient();
 
-  const { data: meetings } = await supabase
-    .from("meetings")
-    .select(
-      "id, title, meeting_type, format, location, starts_at, agenda, minutes_document_id",
-    )
-    .eq("org_id", org!.id)
-    .order("starts_at", { ascending: true });
+  const meetings = await query<{
+    id: string;
+    title: string;
+    meeting_type: string | null;
+    format: string;
+    location: string | null;
+    starts_at: string | Date;
+    agenda: string | null;
+    minutes_document_id: string | null;
+  }>(
+    `SELECT id, title, meeting_type, format, location, starts_at, agenda, minutes_document_id
+     FROM meetings
+     WHERE org_id = ?
+     ORDER BY starts_at ASC`,
+    [org!.id]
+  );
 
-  const meetingIds = (meetings ?? []).map((m) => m.id);
-  const { data: rsvps } = meetingIds.length
-    ? await supabase.from("meeting_rsvps").select("meeting_id").in("meeting_id", meetingIds)
-    : { data: [] };
+  const meetingIds = meetings.map((m) => m.id);
+  const rsvps = meetingIds.length
+    ? await query<{ meeting_id: string }>(
+        `SELECT meeting_id FROM meeting_rsvps WHERE meeting_id IN (${meetingIds.map(() => "?").join(",")})`,
+        meetingIds
+      )
+    : [];
+
   const countByMeeting = new Map<string, number>();
-  (rsvps ?? []).forEach((r) => {
+  rsvps.forEach((r) => {
     countByMeeting.set(r.meeting_id, (countByMeeting.get(r.meeting_id) ?? 0) + 1);
   });
 
-  const { data: minutesDocs } = await supabase
-    .from("documents")
-    .select("id, title")
-    .eq("org_id", org!.id)
-    .eq("category", "minutes")
-    .order("created_at", { ascending: false });
+  const minutesDocs = await query<{ id: string; title: string }>(
+    "SELECT id, title FROM documents WHERE org_id = ? AND category = 'minutes' ORDER BY created_at DESC",
+    [org!.id]
+  );
 
   const canDelete = canDeleteMembers(org?.role ?? null);
   const now = new Date();
@@ -59,7 +69,7 @@ export default async function MeetingsPage() {
       </div>
 
       <div className="flex flex-col gap-4">
-        {(meetings ?? []).map((meeting) => {
+        {meetings.map((meeting) => {
           const date = new Date(meeting.starts_at);
           const isPast = date < now;
           return (
@@ -89,7 +99,7 @@ export default async function MeetingsPage() {
                       {meeting.meeting_type && (
                         <Badge tone="gold">{meeting.meeting_type}</Badge>
                       )}
-                      <Badge tone="muted">{FORMAT_LABEL[meeting.format]}</Badge>
+                      <Badge tone="muted">{FORMAT_LABEL[meeting.format] || meeting.format}</Badge>
                       {isPast && <Badge tone="muted">Completed</Badge>}
                     </div>
                   </div>
@@ -126,14 +136,14 @@ export default async function MeetingsPage() {
                   <MinutesLinker
                     meetingId={meeting.id}
                     currentDocumentId={meeting.minutes_document_id}
-                    documents={minutesDocs ?? []}
+                    documents={minutesDocs}
                   />
                 </div>
               )}
             </Card>
           );
         })}
-        {(!meetings || meetings.length === 0) && (
+        {meetings.length === 0 && (
           <Card>
             <p className="text-sm text-text-dim">
               No meetings yet. Schedule your first one to get started.

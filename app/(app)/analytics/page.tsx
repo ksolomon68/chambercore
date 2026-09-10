@@ -1,8 +1,9 @@
 import { getCurrentOrg } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db/mysql";
 import { StatCard } from "@/components/ui/StatCard";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import type { MemberStatus } from "@/lib/types/database.types";
 
 const MONTH_NAMES = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -11,37 +12,41 @@ const MONTH_NAMES = [
 
 export default async function AnalyticsPage() {
   const org = await getCurrentOrg();
-  const supabase = await createClient();
 
   const now = new Date();
   const yearStart = new Date(now.getFullYear(), 0, 1);
 
   const [
-    { data: members },
-    { data: registrations },
-    { data: rsvps },
-    { data: paidInvoices },
+    members,
+    registrations,
+    rsvps,
+    paidInvoices,
   ] = await Promise.all([
-    supabase
-      .from("members")
-      .select("id, business_name, category, status, member_since")
-      .eq("org_id", org!.id),
-    supabase
-      .from("event_registrations")
-      .select("member_id, registered_at")
-      .eq("org_id", org!.id),
-    supabase
-      .from("meeting_rsvps")
-      .select("member_id, responded_at")
-      .eq("org_id", org!.id),
-    supabase
-      .from("dues_invoices")
-      .select("amount, paid_at")
-      .eq("org_id", org!.id)
-      .eq("status", "paid"),
+    query<{
+      id: string;
+      business_name: string;
+      category: string | null;
+      status: MemberStatus;
+      member_since: string | Date;
+    }>(
+      "SELECT id, business_name, category, status, member_since FROM members WHERE org_id = ?",
+      [org!.id]
+    ),
+    query<{ member_id: string; registered_at: string | Date }>(
+      "SELECT member_id, registered_at FROM event_registrations WHERE org_id = ?",
+      [org!.id]
+    ),
+    query<{ member_id: string; responded_at: string | Date }>(
+      "SELECT member_id, responded_at FROM meeting_rsvps WHERE org_id = ?",
+      [org!.id]
+    ),
+    query<{ amount: number; paid_at: string | Date | null }>(
+      "SELECT amount, paid_at FROM dues_invoices WHERE org_id = ? AND status = 'paid'",
+      [org!.id]
+    ),
   ]);
 
-  const allMembers = members ?? [];
+  const allMembers = members;
   const activeMembers = allMembers.filter((m) => m.status === "active");
   const lapsedMembers = allMembers.filter((m) => m.status === "lapsed");
 
@@ -56,31 +61,28 @@ export default async function AnalyticsPage() {
     (m) => new Date(m.member_since) >= yearStart,
   ).length;
 
-  const collectedYtd = (paidInvoices ?? [])
+  const collectedYtd = paidInvoices
     .filter((i) => i.paid_at && new Date(i.paid_at) >= yearStart)
     .reduce((sum, i) => sum + Number(i.amount), 0);
 
-  // Last-activity date per member, from either event registrations or
-  // meeting RSVPs — whichever is more recent.
   const lastActivityByMember = new Map<string, Date>();
-  (registrations ?? []).forEach((r) => {
+  registrations.forEach((r) => {
     const d = new Date(r.registered_at);
     const existing = lastActivityByMember.get(r.member_id);
     if (!existing || d > existing) lastActivityByMember.set(r.member_id, d);
   });
-  (rsvps ?? []).forEach((r) => {
+  rsvps.forEach((r) => {
     const d = new Date(r.responded_at);
     const existing = lastActivityByMember.get(r.member_id);
     if (!existing || d > existing) lastActivityByMember.set(r.member_id, d);
   });
 
-  const totalActivityCount = (registrations?.length ?? 0) + (rsvps?.length ?? 0);
+  const totalActivityCount = registrations.length + rsvps.length;
   const avgEngagement =
     activeMembers.length > 0
       ? (totalActivityCount / activeMembers.length).toFixed(1)
       : "0.0";
 
-  // Engagement by category: % of that category's members with ≥1 activity.
   const categoryMap = new Map<string, { total: number; engaged: number }>();
   allMembers.forEach((m) => {
     const category = m.category?.trim() || "Uncategorized";
@@ -96,7 +98,6 @@ export default async function AnalyticsPage() {
     }))
     .sort((a, b) => b.pct - a.pct);
 
-  // Membership growth: cumulative count by member_since month, this year.
   const monthCounts = new Array(now.getMonth() + 1).fill(0);
   allMembers.forEach((m) => {
     const d = new Date(m.member_since);
@@ -110,7 +111,6 @@ export default async function AnalyticsPage() {
   }));
   const growthMax = Math.max(1, ...membershipGrowth.map((m) => m.count));
 
-  // At-risk: active members with no activity in 90+ days (or ever).
   const atRisk = activeMembers
     .map((m) => {
       const last = lastActivityByMember.get(m.id);

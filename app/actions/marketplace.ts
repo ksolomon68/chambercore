@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import crypto from "crypto";
+import { execute, queryOne } from "@/lib/db/mysql";
 import { requireOrg, requireMember } from "@/lib/auth/session";
 import { canEditMembers, canDeleteMembers } from "@/lib/auth/permissions";
 
@@ -37,8 +38,6 @@ function parseListingForm(formData: FormData) {
   });
 }
 
-// Staff-posted listings go live immediately (staff already curate everything
-// else in this app); member-submitted ones need approval (see submitListing).
 export async function createListing(
   _prevState: FormState,
   formData: FormData,
@@ -56,24 +55,42 @@ export async function createListing(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const supabase = await createClient();
-  const { data: member } = await supabase
-    .from("members")
-    .select("id")
-    .eq("id", memberId)
-    .eq("org_id", org.id)
-    .maybeSingle();
+  const member = await queryOne<{ id: string }>(
+    "SELECT id FROM members WHERE id = ? AND org_id = ?",
+    [memberId, org.id]
+  );
 
   if (!member) return { error: "Member not found." };
 
-  const { error } = await supabase.from("marketplace_listings").insert({
-    org_id: org.id,
-    member_id: memberId,
-    status: "approved",
-    ...listingFields(parsed.data),
-  });
+  const listingId = crypto.randomUUID();
+  const d = parsed.data;
 
-  if (error) return { error: error.message };
+  try {
+    await execute(
+      `INSERT INTO marketplace_listings (
+        id, org_id, member_id, kind, title, category, description,
+        discount_label, promo_code, expires_at, employment_type, location, pay_range, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        listingId,
+        org.id,
+        memberId,
+        d.kind,
+        d.title,
+        d.category ?? null,
+        d.description ?? null,
+        d.discountLabel ?? null,
+        d.promoCode ?? null,
+        d.expiresAt ? new Date(d.expiresAt) : null,
+        d.employmentType ?? null,
+        d.location ?? null,
+        d.payRange ?? null,
+        "approved",
+      ]
+    );
+  } catch (error: any) {
+    return { error: error?.message || "Could not create listing." };
+  }
 
   revalidatePath("/marketplace");
   redirect("/marketplace");
@@ -90,45 +107,48 @@ export async function submitListing(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase.from("marketplace_listings").insert({
-    org_id: member.orgId,
-    member_id: member.id,
-    status: "pending",
-    ...listingFields(parsed.data),
-  });
+  const listingId = crypto.randomUUID();
+  const d = parsed.data;
 
-  if (error) return { error: error.message };
+  try {
+    await execute(
+      `INSERT INTO marketplace_listings (
+        id, org_id, member_id, kind, title, category, description,
+        discount_label, promo_code, expires_at, employment_type, location, pay_range, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        listingId,
+        member.orgId,
+        member.id,
+        d.kind,
+        d.title,
+        d.category ?? null,
+        d.description ?? null,
+        d.discountLabel ?? null,
+        d.promoCode ?? null,
+        d.expiresAt ? new Date(d.expiresAt) : null,
+        d.employmentType ?? null,
+        d.location ?? null,
+        d.payRange ?? null,
+        "pending",
+      ]
+    );
+  } catch (error: any) {
+    return { error: error?.message || "Could not submit listing." };
+  }
 
   revalidatePath("/portal/marketplace");
   redirect("/portal/marketplace");
-}
-
-function listingFields(data: z.infer<typeof ListingSchema>) {
-  return {
-    kind: data.kind,
-    title: data.title,
-    category: data.category ?? null,
-    description: data.description ?? null,
-    discount_label: data.discountLabel ?? null,
-    promo_code: data.promoCode ?? null,
-    expires_at: data.expiresAt || null,
-    employment_type: data.employmentType ?? null,
-    location: data.location ?? null,
-    pay_range: data.payRange ?? null,
-  };
 }
 
 export async function approveListing(listingId: string) {
   const org = await requireOrg();
   if (!canEditMembers(org.role)) return;
 
-  const supabase = await createClient();
-  await supabase
-    .from("marketplace_listings")
-    .update({ status: "approved" })
-    .eq("id", listingId)
-    .eq("org_id", org.id);
+  await execute(
+    "UPDATE marketplace_listings SET status = 'approved' WHERE id = ? AND org_id = ?",
+    [listingId, org.id]
+  );
 
   revalidatePath("/marketplace");
 }
@@ -137,12 +157,10 @@ export async function archiveListing(listingId: string) {
   const org = await requireOrg();
   if (!canDeleteMembers(org.role)) return;
 
-  const supabase = await createClient();
-  await supabase
-    .from("marketplace_listings")
-    .update({ status: "archived" })
-    .eq("id", listingId)
-    .eq("org_id", org.id);
+  await execute(
+    "UPDATE marketplace_listings SET status = 'archived' WHERE id = ? AND org_id = ?",
+    [listingId, org.id]
+  );
 
   revalidatePath("/marketplace");
 }

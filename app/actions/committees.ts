@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import crypto from "crypto";
+import { execute, transaction } from "@/lib/db/mysql";
 import { requireOrg } from "@/lib/auth/session";
 import { canEditMembers, canDeleteMembers } from "@/lib/auth/permissions";
 
@@ -39,35 +40,39 @@ export async function createCommittee(
   }
 
   const memberIds = formData.getAll("boardMemberIds").map(String).filter(Boolean);
+  const committeeId = crypto.randomUUID();
+  const nextMeeting = parsed.data.nextMeetingAt ? new Date(parsed.data.nextMeetingAt) : null;
 
-  const supabase = await createClient();
-  const { data: committee, error } = await supabase
-    .from("committees")
-    .insert({
-      org_id: org.id,
-      name: parsed.data.name,
-      description: parsed.data.description ?? null,
-      committee_type: parsed.data.committeeType,
-      chair_board_member_id: parsed.data.chairBoardMemberId || null,
-      next_meeting_at: parsed.data.nextMeetingAt
-        ? new Date(parsed.data.nextMeetingAt).toISOString()
-        : null,
-    })
-    .select()
-    .single();
+  try {
+    await transaction(async (conn) => {
+      // 1. Insert Committee
+      await conn.execute(
+        `INSERT INTO committees (
+          id, org_id, name, description, committee_type, chair_board_member_id, next_meeting_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          committeeId,
+          org.id,
+          parsed.data.name,
+          parsed.data.description ?? null,
+          parsed.data.committeeType,
+          parsed.data.chairBoardMemberId || null,
+          nextMeeting,
+        ]
+      );
 
-  if (error || !committee) {
-    return { error: error?.message ?? "Could not create committee." };
-  }
-
-  if (memberIds.length > 0) {
-    await supabase.from("committee_memberships").insert(
-      memberIds.map((boardMemberId) => ({
-        org_id: org.id,
-        committee_id: committee.id,
-        board_member_id: boardMemberId,
-      })),
-    );
+      // 2. Insert memberships
+      for (const boardMemberId of memberIds) {
+        const membershipId = crypto.randomUUID();
+        await conn.execute(
+          `INSERT INTO committee_memberships (id, org_id, committee_id, board_member_id)
+           VALUES (?, ?, ?, ?)`,
+          [membershipId, org.id, committeeId, boardMemberId]
+        );
+      }
+    });
+  } catch (error: any) {
+    return { error: error?.message || "Could not create committee." };
   }
 
   revalidatePath("/committees");
@@ -78,12 +83,10 @@ export async function deleteCommittee(committeeId: string) {
   const org = await requireOrg();
   if (!canDeleteMembers(org.role)) return;
 
-  const supabase = await createClient();
-  await supabase
-    .from("committees")
-    .delete()
-    .eq("id", committeeId)
-    .eq("org_id", org.id);
+  await execute(
+    "DELETE FROM committees WHERE id = ? AND org_id = ?",
+    [committeeId, org.id]
+  );
 
   revalidatePath("/committees");
 }

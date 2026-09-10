@@ -1,16 +1,16 @@
 import { getCurrentOrg } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db/mysql";
 import { CommitteeForm } from "@/components/committees/CommitteeForm";
 
 export default async function NewCommitteePage() {
   const org = await getCurrentOrg();
-  const supabase = await createClient();
 
-  const { data: boardMembers } = await supabase
-    .from("board_members")
-    .select("id, name, title")
-    .eq("org_id", org!.id)
-    .order("name", { ascending: true });
+  const boardMembers = org?.id
+    ? await query<any>(
+        "SELECT id, name, title FROM board_members WHERE org_id = ? ORDER BY name ASC",
+        [org.id]
+      )
+    : [];
 
   return (
     <div>
@@ -20,7 +20,8 @@ export default async function NewCommitteePage() {
       <p className="mt-1 mb-6 text-sm text-text-muted">
         Committees are made up of board members.
       </p>
-      <CommitteeForm boardMembers={boardMembers ?? []} />
+      <CommitteeForm boardMembers={boardMembers} />
     </div>
   );
 }
+

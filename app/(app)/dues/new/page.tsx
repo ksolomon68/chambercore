@@ -1,17 +1,14 @@
 import { getCurrentOrg } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db/mysql";
 import { InvoiceForm } from "@/components/dues/InvoiceForm";
 
 export default async function NewInvoicePage() {
   const org = await getCurrentOrg();
-  const supabase = await createClient();
 
-  const { data: members } = await supabase
-    .from("members")
-    .select("id, business_name")
-    .eq("org_id", org!.id)
-    .neq("status", "archived")
-    .order("business_name", { ascending: true });
+  const members = await query<{ id: string; business_name: string }>(
+    "SELECT id, business_name FROM members WHERE org_id = ? AND status != 'archived' ORDER BY business_name ASC",
+    [org!.id]
+  );
 
   return (
     <div>
@@ -22,7 +19,7 @@ export default async function NewInvoicePage() {
         Bill a member for dues, and mark it paid once you&apos;ve received
         payment.
       </p>
-      <InvoiceForm members={members ?? []} />
+      <InvoiceForm members={members} />
     </div>
   );
 }

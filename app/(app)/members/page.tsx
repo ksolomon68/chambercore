@@ -1,21 +1,28 @@
 import Link from "next/link";
 import { getCurrentOrg } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db/mysql";
 import { canDeleteMembers } from "@/lib/auth/permissions";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/members/StatusBadge";
 import { TierBadge } from "@/components/members/TierBadge";
 import { archiveMember } from "@/app/actions/members";
+import type { MemberStatus, MemberTier } from "@/lib/types/database.types";
 
 export default async function MembersPage() {
   const org = await getCurrentOrg();
-  const supabase = await createClient();
 
-  const { data: members } = await supabase
-    .from("members")
-    .select("*")
-    .eq("org_id", org!.id)
-    .order("business_name", { ascending: true });
+  const members = await query<{
+    id: string;
+    business_name: string;
+    contact_name: string | null;
+    category: string | null;
+    tier: MemberTier;
+    status: MemberStatus;
+    member_since: string | Date;
+  }>(
+    "SELECT id, business_name, contact_name, category, tier, status, member_since FROM members WHERE org_id = ? ORDER BY business_name ASC",
+    [org!.id]
+  );
 
   return (
     <div>
@@ -25,7 +32,7 @@ export default async function MembersPage() {
             Member Management
           </h1>
           <p className="mt-1 text-sm text-text-muted">
-            {members?.length ?? 0} member{members?.length === 1 ? "" : "s"}
+            {members.length} member{members.length === 1 ? "" : "s"}
             {org?.memberLimit ? ` of ${org.memberLimit} allowed` : ""}
           </p>
         </div>
@@ -46,7 +53,7 @@ export default async function MembersPage() {
             </tr>
           </thead>
           <tbody>
-            {members?.map((m) => (
+            {members.map((m) => (
               <tr key={m.id} className="border-t border-card-border">
                 <td className="px-4 py-3 font-medium text-off-white">
                   {m.business_name}
@@ -91,7 +98,7 @@ export default async function MembersPage() {
                 </td>
               </tr>
             ))}
-            {(!members || members.length === 0) && (
+            {members.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-10 text-center text-text-dim">
                   No members yet. Add your first one to get started.

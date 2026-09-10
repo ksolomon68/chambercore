@@ -1,44 +1,53 @@
 import { getCurrentOrg } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { query, queryOne } from "@/lib/db/mysql";
 import { canDeleteMembers } from "@/lib/auth/permissions";
 import { ButtonLink, Button } from "@/components/ui/Button";
 import { VoteCard } from "@/components/voting/VoteCard";
 import { closeVote } from "@/app/actions/voting";
+import type { VoteStatus } from "@/lib/types/database.types";
 
 export default async function VotingPage() {
   const org = await getCurrentOrg();
-  const supabase = await createClient();
 
-  const { count: totalEligible } = await supabase
-    .from("board_members")
-    .select("id", { count: "exact", head: true })
-    .eq("org_id", org!.id);
+  const totalEligibleCount = await queryOne<{ total: number }>(
+    "SELECT COUNT(*) as total FROM board_members WHERE org_id = ?",
+    [org!.id]
+  );
+  const totalEligible = totalEligibleCount?.total ?? 0;
 
-  const { data: votes } = await supabase
-    .from("votes")
-    .select("id, title, description, status, closes_at")
-    .eq("org_id", org!.id)
-    .order("created_at", { ascending: false });
+  const votes = await query<{
+    id: string;
+    title: string;
+    description: string | null;
+    status: VoteStatus;
+    closes_at: string | Date | null;
+  }>(
+    "SELECT id, title, description, status, closes_at FROM votes WHERE org_id = ? ORDER BY created_at DESC",
+    [org!.id]
+  );
 
-  const voteIds = (votes ?? []).map((v) => v.id);
-  const { data: options } = voteIds.length
-    ? await supabase
-        .from("vote_options")
-        .select("id, vote_id, label, position")
-        .in("vote_id", voteIds)
-        .order("position", { ascending: true })
-    : { data: [] };
-  const { data: casts } = voteIds.length
-    ? await supabase.from("vote_casts").select("vote_id, option_id").in("vote_id", voteIds)
-    : { data: [] };
+  const voteIds = votes.map((v) => v.id);
+  const options = voteIds.length
+    ? await query<{ id: string; vote_id: string; label: string; position: number }>(
+        `SELECT id, vote_id, label, position FROM vote_options WHERE org_id = ? ORDER BY position ASC`,
+        [org!.id]
+      )
+    : [];
+
+  const casts = voteIds.length
+    ? await query<{ vote_id: string; option_id: string }>(
+        `SELECT vote_id, option_id FROM vote_casts WHERE org_id = ?`,
+        [org!.id]
+      )
+    : [];
 
   const countByOption = new Map<string, number>();
-  (casts ?? []).forEach((c) => {
+  casts.forEach((c) => {
     countByOption.set(c.option_id, (countByOption.get(c.option_id) ?? 0) + 1);
   });
 
   const optionsByVote = new Map<string, { id: string; label: string; count: number }[]>();
-  (options ?? []).forEach((o) => {
+  options.forEach((o) => {
     const list = optionsByVote.get(o.vote_id) ?? [];
     list.push({ id: o.id, label: o.label, count: countByOption.get(o.id) ?? 0 });
     optionsByVote.set(o.vote_id, list);
@@ -61,15 +70,15 @@ export default async function VotingPage() {
       </div>
 
       <div className="flex flex-col gap-4">
-        {(votes ?? []).map((vote) => (
+        {votes.map((vote) => (
           <VoteCard
             key={vote.id}
             title={vote.title}
             description={vote.description}
             status={vote.status}
-            closesAt={vote.closes_at}
+            closesAt={vote.closes_at ? new Date(vote.closes_at).toISOString() : null}
             options={optionsByVote.get(vote.id) ?? []}
-            totalEligible={totalEligible ?? 0}
+            totalEligible={totalEligible}
             headerActions={
               canClose && vote.status === "open" ? (
                 <form action={closeVote.bind(null, vote.id)}>
@@ -81,7 +90,7 @@ export default async function VotingPage() {
             }
           />
         ))}
-        {(!votes || votes.length === 0) && (
+        {votes.length === 0 && (
           <p className="text-sm text-text-dim">
             No votes yet. Create your first one to get started.
           </p>

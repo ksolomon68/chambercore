@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import crypto from "crypto";
+import { execute } from "@/lib/db/mysql";
 import { requireOrg, requireMember } from "@/lib/auth/session";
 import { canEditMembers, canDeleteMembers } from "@/lib/auth/permissions";
 
@@ -44,20 +45,30 @@ export async function createMeeting(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase.from("meetings").insert({
-    org_id: org.id,
-    title: parsed.data.title,
-    meeting_type: parsed.data.meetingType ?? null,
-    format: parsed.data.format,
-    location: parsed.data.location ?? null,
-    starts_at: new Date(parsed.data.startsAt).toISOString(),
-    duration_minutes: parsed.data.durationMinutes,
-    agenda: parsed.data.agenda ?? null,
-    minutes_document_id: parsed.data.minutesDocumentId || null,
-  });
+  const meetingId = crypto.randomUUID();
+  const startsAt = new Date(parsed.data.startsAt);
 
-  if (error) return { error: error.message };
+  try {
+    await execute(
+      `INSERT INTO meetings (
+        id, org_id, title, meeting_type, format, location, starts_at, duration_minutes, agenda, minutes_document_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        meetingId,
+        org.id,
+        parsed.data.title,
+        parsed.data.meetingType ?? null,
+        parsed.data.format,
+        parsed.data.location ?? null,
+        startsAt,
+        parsed.data.durationMinutes,
+        parsed.data.agenda ?? null,
+        parsed.data.minutesDocumentId || null,
+      ]
+    );
+  } catch (error: any) {
+    return { error: error?.message || "Could not create meeting." };
+  }
 
   revalidatePath("/meetings");
   redirect("/meetings");
@@ -67,8 +78,10 @@ export async function deleteMeeting(meetingId: string) {
   const org = await requireOrg();
   if (!canDeleteMembers(org.role)) return;
 
-  const supabase = await createClient();
-  await supabase.from("meetings").delete().eq("id", meetingId).eq("org_id", org.id);
+  await execute("DELETE FROM meetings WHERE id = ? AND org_id = ?", [
+    meetingId,
+    org.id,
+  ]);
   revalidatePath("/meetings");
 }
 
@@ -78,34 +91,35 @@ export async function setMeetingMinutes(meetingId: string, formData: FormData) {
 
   const documentId = String(formData.get("minutesDocumentId") || "") || null;
 
-  const supabase = await createClient();
-  await supabase
-    .from("meetings")
-    .update({ minutes_document_id: documentId })
-    .eq("id", meetingId)
-    .eq("org_id", org.id);
+  await execute(
+    "UPDATE meetings SET minutes_document_id = ? WHERE id = ? AND org_id = ?",
+    [documentId, meetingId, org.id]
+  );
 
   revalidatePath("/meetings");
 }
 
 export async function rsvpToMeeting(meetingId: string) {
   const member = await requireMember();
-  const supabase = await createClient();
-  await supabase.from("meeting_rsvps").insert({
-    org_id: member.orgId,
-    meeting_id: meetingId,
-    member_id: member.id,
-  });
+  const rsvpId = crypto.randomUUID();
+
+  await execute(
+    `INSERT INTO meeting_rsvps (id, org_id, meeting_id, member_id)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE id = id`,
+    [rsvpId, member.orgId, meetingId, member.id]
+  );
+
   revalidatePath("/portal/meetings");
 }
 
 export async function cancelRsvp(meetingId: string) {
   const member = await requireMember();
-  const supabase = await createClient();
-  await supabase
-    .from("meeting_rsvps")
-    .delete()
-    .eq("meeting_id", meetingId)
-    .eq("member_id", member.id);
+
+  await execute(
+    "DELETE FROM meeting_rsvps WHERE meeting_id = ? AND member_id = ?",
+    [meetingId, member.id]
+  );
+
   revalidatePath("/portal/meetings");
 }

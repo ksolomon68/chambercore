@@ -1,32 +1,38 @@
 import { getCurrentOrg } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db/mysql";
 import { canEditMembers, canDeleteMembers } from "@/lib/auth/permissions";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { ButtonLink } from "@/components/ui/Button";
 import { StatCard } from "@/components/ui/StatCard";
 import { ListingRowActions } from "@/components/marketplace/ListingRowActions";
+import type { MarketplaceKind, MarketplaceStatus } from "@/lib/types/database.types";
 
 export default async function MarketplacePage() {
   const org = await getCurrentOrg();
-  const supabase = await createClient();
 
-  const { data: listings } = await supabase
-    .from("marketplace_listings")
-    .select(
-      "id, member_id, kind, title, category, status, discount_label, employment_type",
-    )
-    .eq("org_id", org!.id)
-    .order("created_at", { ascending: false });
+  const listings = await query<{
+    id: string;
+    member_id: string;
+    kind: MarketplaceKind;
+    title: string;
+    category: string | null;
+    status: MarketplaceStatus;
+    discount_label: string | null;
+    employment_type: string | null;
+    business_name: string;
+  }>(
+    `SELECT l.id, l.member_id, l.kind, l.title, l.category, l.status,
+            l.discount_label, l.employment_type, m.business_name
+     FROM marketplace_listings l
+     LEFT JOIN members m ON m.id = l.member_id
+     WHERE l.org_id = ?
+     ORDER BY l.created_at DESC`,
+    [org!.id]
+  );
 
-  const memberIds = Array.from(new Set((listings ?? []).map((l) => l.member_id)));
-  const { data: members } = memberIds.length
-    ? await supabase.from("members").select("id, business_name").in("id", memberIds)
-    : { data: [] };
-  const memberById = new Map((members ?? []).map((m) => [m.id, m]));
-
-  const pending = (listings ?? []).filter((l) => l.status === "pending");
-  const active = (listings ?? []).filter((l) => l.status === "approved");
+  const pending = listings.filter((l) => l.status === "pending");
+  const active = listings.filter((l) => l.status === "approved");
   const activeDeals = active.filter((l) => l.kind === "deal");
   const activeJobs = active.filter((l) => l.kind === "job");
 
@@ -72,7 +78,7 @@ export default async function MarketplacePage() {
                 {pending.map((listing) => (
                   <tr key={listing.id} className="border-t border-card-border">
                     <td className="px-4 py-3 font-medium text-off-white">
-                      {memberById.get(listing.member_id)?.business_name ?? "—"}
+                      {listing.business_name ?? "—"}
                     </td>
                     <td className="px-4 py-3">
                       <Badge tone={listing.kind === "deal" ? "gold" : "teal"}>
@@ -114,7 +120,7 @@ export default async function MarketplacePage() {
               {active.map((listing) => (
                 <tr key={listing.id} className="border-t border-card-border">
                   <td className="px-4 py-3 font-medium text-off-white">
-                    {memberById.get(listing.member_id)?.business_name ?? "—"}
+                    {listing.business_name ?? "—"}
                   </td>
                   <td className="px-4 py-3">
                     <Badge tone={listing.kind === "deal" ? "gold" : "teal"}>

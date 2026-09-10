@@ -1,20 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { queryOne, execute } from "@/lib/db/mysql";
+import { getCurrentUser } from "@/lib/auth/session";
 import { stripe } from "@/lib/stripe/client";
 import { PLANS } from "@/lib/stripe/plans";
 import type { PlanTier } from "@/lib/types/database.types";
 
 async function buildCheckoutUrl(
-  request: NextRequest,
+  _request: NextRequest,
   orgId: string,
   tier: string,
 ): Promise<{ url: string } | { error: string; status: number }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentUser();
   if (!user) return { error: "Not authenticated.", status: 401 };
 
   const plan = PLANS[tier as PlanTier];
@@ -22,23 +18,19 @@ async function buildCheckoutUrl(
     return { error: "Invalid plan.", status: 400 };
   }
 
-  const { data: membership } = await supabase
-    .from("org_members")
-    .select("role")
-    .eq("org_id", orgId)
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const membership = await queryOne<{ role: string }>(
+    "SELECT role FROM org_members WHERE org_id = ? AND user_id = ?",
+    [orgId, user.id]
+  );
 
   if (!membership || !["owner", "admin"].includes(membership.role)) {
     return { error: "Not authorized for this organization.", status: 403 };
   }
 
-  const admin = createAdminClient();
-  const { data: org } = await admin
-    .from("organizations")
-    .select("stripe_customer_id, name")
-    .eq("id", orgId)
-    .maybeSingle();
+  const org = await queryOne<{ stripe_customer_id: string | null; name: string }>(
+    "SELECT stripe_customer_id, name FROM organizations WHERE id = ?",
+    [orgId]
+  );
 
   if (!org) return { error: "Organization not found.", status: 404 };
 
@@ -50,13 +42,13 @@ async function buildCheckoutUrl(
       metadata: { org_id: orgId },
     });
     customerId = customer.id;
-    await admin
-      .from("organizations")
-      .update({ stripe_customer_id: customerId })
-      .eq("id", orgId);
+    await execute(
+      "UPDATE organizations SET stripe_customer_id = ? WHERE id = ?",
+      [customerId, orgId]
+    );
   }
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL!;
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
@@ -71,7 +63,6 @@ async function buildCheckoutUrl(
   return { url: session.url };
 }
 
-// Used by the post-signup redirect (a plain browser navigation).
 export async function GET(request: NextRequest) {
   const orgId = request.nextUrl.searchParams.get("orgId");
   const tier = request.nextUrl.searchParams.get("tier");
@@ -88,7 +79,6 @@ export async function GET(request: NextRequest) {
   return NextResponse.redirect(result.url);
 }
 
-// Used by settings/billing (fetch call) to launch checkout for an upgrade.
 export async function POST(request: NextRequest) {
   const { orgId, tier } = await request.json();
   const result = await buildCheckoutUrl(request, orgId, tier);

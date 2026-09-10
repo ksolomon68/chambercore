@@ -1,16 +1,16 @@
 import { getCurrentOrg } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { queryOne } from "@/lib/db/mysql";
 import { OrganizationForm } from "@/components/settings/OrganizationForm";
 
 export default async function OrganizationSettingsPage() {
   const org = await getCurrentOrg();
-  const supabase = await createClient();
 
-  const { data: fullOrg } = await supabase
-    .from("organizations")
-    .select("name, slug, primary_color")
-    .eq("id", org!.id)
-    .maybeSingle();
+  const fullOrg = org?.id
+    ? await queryOne<{ name: string; slug: string; primary_color: string | null }>(
+        "SELECT name, slug, primary_color FROM organizations WHERE id = ? LIMIT 1",
+        [org.id]
+      )
+    : null;
 
   return (
     <div>
@@ -29,3 +29,4 @@ export default async function OrganizationSettingsPage() {
     </div>
   );
 }
+

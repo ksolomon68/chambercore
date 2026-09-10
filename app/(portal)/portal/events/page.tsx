@@ -1,5 +1,5 @@
 import { requireMember } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db/mysql";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -7,33 +7,41 @@ import { registerForEvent, cancelRegistration } from "@/app/actions/events";
 
 export default async function PortalEventsPage() {
   const member = await requireMember();
-  const supabase = await createClient();
 
-  const { data: events } = await supabase
-    .from("events")
-    .select("id, title, description, location, starts_at, price, capacity")
-    .eq("org_id", member.orgId)
-    .gte("starts_at", new Date().toISOString())
-    .order("starts_at", { ascending: true });
+  const events = await query<{
+    id: string;
+    title: string;
+    description: string | null;
+    location: string | null;
+    starts_at: string | Date;
+    price: number | null;
+    capacity: number | null;
+  }>(
+    `SELECT id, title, description, location, starts_at, price, capacity
+     FROM events
+     WHERE org_id = ? AND starts_at >= NOW()
+     ORDER BY starts_at ASC`,
+    [member.orgId]
+  );
 
-  const eventIds = (events ?? []).map((e) => e.id);
-  const { data: myRegistrations } = eventIds.length
-    ? await supabase
-        .from("event_registrations")
-        .select("event_id")
-        .eq("member_id", member.id)
-        .in("event_id", eventIds)
-    : { data: [] };
-  const registeredIds = new Set((myRegistrations ?? []).map((r) => r.event_id));
+  const eventIds = events.map((e) => e.id);
+  const myRegistrations = eventIds.length
+    ? await query<{ event_id: string }>(
+        `SELECT event_id FROM event_registrations WHERE member_id = ? AND event_id IN (${eventIds.map(() => "?").join(",")})`,
+        [member.id, ...eventIds]
+      )
+    : [];
+  const registeredIds = new Set(myRegistrations.map((r) => r.event_id));
 
-  const { data: allRegistrations } = eventIds.length
-    ? await supabase
-        .from("event_registrations")
-        .select("event_id")
-        .in("event_id", eventIds)
-    : { data: [] };
+  const allRegistrations = eventIds.length
+    ? await query<{ event_id: string }>(
+        `SELECT event_id FROM event_registrations WHERE event_id IN (${eventIds.map(() => "?").join(",")})`,
+        eventIds
+      )
+    : [];
+
   const countByEvent = new Map<string, number>();
-  (allRegistrations ?? []).forEach((r) => {
+  allRegistrations.forEach((r) => {
     countByEvent.set(r.event_id, (countByEvent.get(r.event_id) ?? 0) + 1);
   });
 
@@ -47,7 +55,7 @@ export default async function PortalEventsPage() {
       </p>
 
       <div className="flex flex-col gap-3">
-        {(events ?? []).map((event) => {
+        {events.map((event) => {
           const date = new Date(event.starts_at);
           const isRegistered = registeredIds.has(event.id);
           const isFull =
@@ -98,7 +106,7 @@ export default async function PortalEventsPage() {
             </Card>
           );
         })}
-        {(!events || events.length === 0) && (
+        {events.length === 0 && (
           <Card>
             <p className="text-sm text-text-dim">No upcoming events.</p>
           </Card>

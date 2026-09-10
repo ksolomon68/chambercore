@@ -1,5 +1,5 @@
 import { getCurrentOrg } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db/mysql";
 import { canDeleteMembers } from "@/lib/auth/permissions";
 import { Card } from "@/components/ui/Card";
 import { ButtonLink, Button } from "@/components/ui/Button";
@@ -8,24 +8,30 @@ import { deleteEvent } from "@/app/actions/events";
 
 export default async function EventsPage() {
   const org = await getCurrentOrg();
-  const supabase = await createClient();
 
-  const { data: events } = await supabase
-    .from("events")
-    .select("id, title, description, location, starts_at, price, capacity")
-    .eq("org_id", org!.id)
-    .order("starts_at", { ascending: true });
+  const events = await query<{
+    id: string;
+    title: string;
+    description: string | null;
+    location: string | null;
+    starts_at: string | Date;
+    price: number | null;
+    capacity: number | null;
+  }>(
+    "SELECT id, title, description, location, starts_at, price, capacity FROM events WHERE org_id = ? ORDER BY starts_at ASC",
+    [org!.id]
+  );
 
-  const eventIds = (events ?? []).map((e) => e.id);
-  const { data: registrations } = eventIds.length
-    ? await supabase
-        .from("event_registrations")
-        .select("event_id")
-        .in("event_id", eventIds)
-    : { data: [] };
+  const eventIds = events.map((e) => e.id);
+  const registrations = eventIds.length
+    ? await query<{ event_id: string }>(
+        `SELECT event_id FROM event_registrations WHERE event_id IN (${eventIds.map(() => "?").join(",")})`,
+        eventIds
+      )
+    : [];
 
   const countByEvent = new Map<string, number>();
-  (registrations ?? []).forEach((r) => {
+  registrations.forEach((r) => {
     countByEvent.set(r.event_id, (countByEvent.get(r.event_id) ?? 0) + 1);
   });
 
@@ -47,7 +53,7 @@ export default async function EventsPage() {
 
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
         <div className="flex flex-col gap-3">
-          {(events ?? []).map((event) => {
+          {events.map((event) => {
             const registered = countByEvent.get(event.id) ?? 0;
             const date = new Date(event.starts_at);
             return (
@@ -93,7 +99,7 @@ export default async function EventsPage() {
               </Card>
             );
           })}
-          {(!events || events.length === 0) && (
+          {events.length === 0 && (
             <Card>
               <p className="text-sm text-text-dim">
                 No events yet. Create your first one to get started.
@@ -107,7 +113,7 @@ export default async function EventsPage() {
             Registration Progress
           </div>
           <div className="flex flex-col gap-3">
-            {(events ?? []).map((event) => (
+            {events.map((event) => (
               <div key={event.id}>
                 <div className="mb-1 flex justify-between text-xs text-text-muted">
                   <span className="truncate">{event.title}</span>
@@ -118,7 +124,7 @@ export default async function EventsPage() {
                 />
               </div>
             ))}
-            {(!events || events.length === 0) && (
+            {events.length === 0 && (
               <p className="text-xs text-text-dim">No events yet.</p>
             )}
           </div>

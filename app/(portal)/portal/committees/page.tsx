@@ -1,38 +1,54 @@
 import { requireMember } from "@/lib/auth/session";
-import { createClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db/mysql";
 import { CommitteeCard } from "@/components/committees/CommitteeCard";
+import type { CommitteeType } from "@/lib/types/database.types";
 
 export default async function PortalCommitteesPage() {
   const member = await requireMember();
-  const supabase = await createClient();
 
-  const { data: committees } = await supabase
-    .from("committees")
-    .select("id, name, description, committee_type, chair_board_member_id, next_meeting_at")
-    .eq("org_id", member.orgId)
-    .order("created_at", { ascending: true });
+  const committees = await query<{
+    id: string;
+    name: string;
+    description: string | null;
+    committee_type: CommitteeType;
+    chair_board_member_id: string | null;
+    next_meeting_at: string | Date | null;
+  }>(
+    "SELECT id, name, description, committee_type, chair_board_member_id, next_meeting_at FROM committees WHERE org_id = ? ORDER BY created_at ASC",
+    [member.orgId]
+  );
 
-  const { data: boardMembers } = await supabase
-    .from("board_members")
-    .select("id, name")
-    .eq("org_id", member.orgId);
-  const nameByBoardMemberId = new Map((boardMembers ?? []).map((b) => [b.id, b.name]));
+  const boardMembers = await query<{ id: string; name: string }>(
+    "SELECT id, name FROM board_members WHERE org_id = ?",
+    [member.orgId]
+  );
+  const nameByBoardMemberId = new Map(boardMembers.map((b) => [b.id, b.name]));
 
-  const committeeIds = (committees ?? []).map((c) => c.id);
-  const { data: memberships } = committeeIds.length
-    ? await supabase
-        .from("committee_memberships")
-        .select("committee_id, board_member_id")
-        .in("committee_id", committeeIds)
-    : { data: [] };
+  const committeeIds = committees.map((c) => c.id);
+  const memberships = committeeIds.length
+    ? await query<{ committee_id: string; board_member_id: string }>(
+        `SELECT committee_id, board_member_id FROM committee_memberships WHERE committee_id IN (${committeeIds.map(() => "?").join(",")})`,
+        committeeIds
+      )
+    : [];
+
   const membersByCommittee = new Map<string, string[]>();
-  (memberships ?? []).forEach((m) => {
+  memberships.forEach((m) => {
     const name = nameByBoardMemberId.get(m.board_member_id);
     if (!name) return;
     const list = membersByCommittee.get(m.committee_id) ?? [];
     list.push(name);
     membersByCommittee.set(m.committee_id, list);
   });
+
+  const formattedCommittees = committees.map((c) => ({
+    ...c,
+    next_meeting_at: c.next_meeting_at
+      ? c.next_meeting_at instanceof Date
+        ? c.next_meeting_at.toISOString()
+        : String(c.next_meeting_at)
+      : null,
+  }));
 
   return (
     <div>
@@ -44,7 +60,7 @@ export default async function PortalCommitteesPage() {
       </p>
 
       <div className="flex flex-col gap-4">
-        {(committees ?? []).map((committee) => (
+        {formattedCommittees.map((committee) => (
           <CommitteeCard
             key={committee.id}
             committee={committee}
@@ -56,7 +72,7 @@ export default async function PortalCommitteesPage() {
             memberNames={membersByCommittee.get(committee.id) ?? []}
           />
         ))}
-        {(!committees || committees.length === 0) && (
+        {formattedCommittees.length === 0 && (
           <p className="text-sm text-text-dim">No committees published yet.</p>
         )}
       </div>

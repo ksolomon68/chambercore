@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import crypto from "crypto";
+import { execute } from "@/lib/db/mysql";
 import { requireOrg, requireMember } from "@/lib/auth/session";
 import { canEditMembers, canDeleteMembers } from "@/lib/auth/permissions";
 
@@ -40,18 +41,27 @@ export async function createEvent(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase.from("events").insert({
-    org_id: org.id,
-    title: parsed.data.title,
-    description: parsed.data.description ?? null,
-    location: parsed.data.location ?? null,
-    starts_at: new Date(parsed.data.startsAt).toISOString(),
-    price: parsed.data.price ?? null,
-    capacity: parsed.data.capacity ?? null,
-  });
+  const eventId = crypto.randomUUID();
+  const startsAt = new Date(parsed.data.startsAt);
 
-  if (error) return { error: error.message };
+  try {
+    await execute(
+      `INSERT INTO events (id, org_id, title, description, location, starts_at, price, capacity)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        eventId,
+        org.id,
+        parsed.data.title,
+        parsed.data.description ?? null,
+        parsed.data.location ?? null,
+        startsAt,
+        parsed.data.price ?? null,
+        parsed.data.capacity ?? null,
+      ]
+    );
+  } catch (error: any) {
+    return { error: error?.message || "Could not create event." };
+  }
 
   revalidatePath("/events");
   redirect("/events");
@@ -61,29 +71,34 @@ export async function deleteEvent(eventId: string) {
   const org = await requireOrg();
   if (!canDeleteMembers(org.role)) return;
 
-  const supabase = await createClient();
-  await supabase.from("events").delete().eq("id", eventId).eq("org_id", org.id);
+  await execute("DELETE FROM events WHERE id = ? AND org_id = ?", [
+    eventId,
+    org.id,
+  ]);
   revalidatePath("/events");
 }
 
 export async function registerForEvent(eventId: string) {
   const member = await requireMember();
-  const supabase = await createClient();
-  await supabase.from("event_registrations").insert({
-    org_id: member.orgId,
-    event_id: eventId,
-    member_id: member.id,
-  });
+  const regId = crypto.randomUUID();
+
+  await execute(
+    `INSERT INTO event_registrations (id, org_id, event_id, member_id)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE id = id`,
+    [regId, member.orgId, eventId, member.id]
+  );
+
   revalidatePath("/portal/events");
 }
 
 export async function cancelRegistration(eventId: string) {
   const member = await requireMember();
-  const supabase = await createClient();
-  await supabase
-    .from("event_registrations")
-    .delete()
-    .eq("event_id", eventId)
-    .eq("member_id", member.id);
+
+  await execute(
+    "DELETE FROM event_registrations WHERE event_id = ? AND member_id = ?",
+    [eventId, member.id]
+  );
+
   revalidatePath("/portal/events");
 }

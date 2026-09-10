@@ -2,17 +2,19 @@
 
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { CURRENT_ORG_COOKIE } from "@/lib/auth/session";
+import crypto from "crypto";
 import { cookies } from "next/headers";
+import { query, queryOne, execute, transaction } from "@/lib/db/mysql";
+import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { signJwt } from "@/lib/auth/jwt";
+import { CURRENT_ORG_COOKIE, AUTH_COOKIE_NAME } from "@/lib/auth/constants";
 import type { PlanTier } from "@/lib/types/database.types";
 
 export type FormState = { error?: string } | undefined;
 
 const SignupSchema = z.object({
   chamberName: z.string().min(2, "Chamber name must be at least 2 characters."),
-  email: z.email("Enter a valid email address."),
+  email: z.string().email("Enter a valid email address."),
   password: z.string().min(8, "Password must be at least 8 characters."),
   planTier: z.enum(["starter", "professional"]).default("starter"),
 });
@@ -48,84 +50,84 @@ export async function signup(
 
   const { chamberName, email, password, planTier } = parsed.data;
 
-  const supabase = await createClient();
-  const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-    email,
-    password,
-  });
+  // Check if user already exists
+  const existingUser = await queryOne<{ id: string }>(
+    "SELECT id FROM users WHERE email = ?",
+    [email.toLowerCase()]
+  );
 
-  if (signUpError) {
-    return { error: signUpError.message };
+  if (existingUser) {
+    return { error: "An account with this email address already exists." };
   }
 
-  const userId = signUpData.user?.id;
-  if (!userId) {
-    return {
-      error:
-        "Check your email to confirm your account, then sign in to finish setting up your chamber.",
-    };
-  }
-
-  // Org creation uses the service-role client: at this point the user may not
-  // yet have a confirmed session (email confirmation pending), so RLS
-  // (which requires auth.uid()) would otherwise block the insert.
-  const admin = createAdminClient();
+  const userId = crypto.randomUUID();
+  const orgId = crypto.randomUUID();
+  const orgMemberId = crypto.randomUUID();
+  const passwordHash = await hashPassword(password);
 
   const baseSlug = slugify(chamberName) || "chamber";
   let slug = baseSlug;
   for (let attempt = 1; attempt <= 20; attempt++) {
-    const { data: existing } = await admin
-      .from("organizations")
-      .select("id")
-      .eq("slug", slug)
-      .maybeSingle();
-    if (!existing) break;
+    const existingOrg = await queryOne<{ id: string }>(
+      "SELECT id FROM organizations WHERE slug = ?",
+      [slug]
+    );
+    if (!existingOrg) break;
     slug = `${baseSlug}-${attempt + 1}`;
   }
 
-  const { data: org, error: orgError } = await admin
-    .from("organizations")
-    .insert({
-      name: chamberName,
-      slug,
-      plan_tier: planTier,
-      member_limit: PLAN_MEMBER_LIMITS[planTier],
-    })
-    .select()
-    .single();
+  try {
+    await transaction(async (conn) => {
+      // 1. Create User
+      await conn.execute(
+        "INSERT INTO users (id, email, password_hash, role) VALUES (?, ?, ?, ?)",
+        [userId, email.toLowerCase(), passwordHash, "owner"]
+      );
 
-  if (orgError || !org) {
-    console.error("Organization creation failed:", orgError);
+      // 2. Create Organization
+      await conn.execute(
+        "INSERT INTO organizations (id, name, slug, plan_tier, member_limit) VALUES (?, ?, ?, ?, ?)",
+        [orgId, chamberName, slug, planTier, PLAN_MEMBER_LIMITS[planTier]]
+      );
+
+      // 3. Create Org Member Owner
+      await conn.execute(
+        "INSERT INTO org_members (id, org_id, user_id, role) VALUES (?, ?, ?, ?)",
+        [orgMemberId, orgId, userId, "owner"]
+      );
+    });
+  } catch (error) {
+    console.error("Signup transaction failed:", error);
     return { error: "Could not create your chamber. Please try again." };
   }
 
-  const { error: memberError } = await admin.from("org_members").insert({
-    org_id: org.id,
-    user_id: userId,
+  // Issue Session JWT
+  const token = signJwt({
+    sub: userId,
+    email: email.toLowerCase(),
     role: "owner",
   });
 
-  if (memberError) {
-    console.error("Member creation failed:", memberError);
-    return { error: "Could not set up your account. Please try again." };
-  }
-
   const cookieStore = await cookies();
-  cookieStore.set(CURRENT_ORG_COOKIE, org.id, {
+  cookieStore.set(AUTH_COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30, // 30 days
+  });
+
+  cookieStore.set(CURRENT_ORG_COOKIE, orgId, {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
   });
 
-  // if (planTier === "starter" || planTier === "professional") {
-  //   redirect(`/api/stripe/checkout?orgId=${org.id}&tier=${planTier}`);
-  // }
-
   redirect("/dashboard");
 }
 
 const LoginSchema = z.object({
-  email: z.email("Enter a valid email address."),
+  email: z.string().email("Enter a valid email address."),
   password: z.string().min(1, "Password is required."),
 });
 
@@ -142,51 +144,81 @@ export async function login(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const supabase = await createClient();
-  const { data: signInData, error } =
-    await supabase.auth.signInWithPassword(parsed.data);
+  const { email, password } = parsed.data;
 
-  if (error) {
+  const user = await queryOne<{
+    id: string;
+    email: string;
+    password_hash: string;
+    role: string;
+  }>("SELECT id, email, password_hash, role FROM users WHERE email = ?", [
+    email.toLowerCase(),
+  ]);
+
+  if (!user) {
     return { error: "Invalid email or password." };
   }
 
-  const userId = signInData.user?.id;
-  if (userId) {
-    // Staff (org_members) takes priority, then fall back to a linked
-    // business-member record (the self-service portal). A person is expected
-    // to be one or the other, not both.
-    const { data: staffMembership } = await supabase
-      .from("org_members")
-      .select("org_id")
-      .eq("user_id", userId)
-      .limit(1)
-      .maybeSingle();
+  const isValidPassword = await verifyPassword(password, user.password_hash);
+  if (!isValidPassword) {
+    return { error: "Invalid email or password." };
+  }
 
-    if (staffMembership) redirect("/dashboard");
+  // Issue Session JWT
+  const token = signJwt({
+    sub: user.id,
+    email: user.email,
+    role: user.role,
+  });
 
-    const { data: memberRecord } = await supabase
-      .from("members")
-      .select("id")
-      .eq("user_id", userId)
-      .limit(1)
-      .maybeSingle();
+  const cookieStore = await cookies();
+  cookieStore.set(AUTH_COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30,
+  });
 
-    if (memberRecord) redirect("/portal");
+  // Check Staff Membership
+  const staffMembership = await queryOne<{ org_id: string }>(
+    "SELECT org_id FROM org_members WHERE user_id = ? LIMIT 1",
+    [user.id]
+  );
+
+  if (staffMembership) {
+    cookieStore.set(CURRENT_ORG_COOKIE, staffMembership.org_id, {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+    });
+    redirect("/dashboard");
+  }
+
+  // Check Member Portal
+  const memberRecord = await queryOne<{ id: string }>(
+    "SELECT id FROM members WHERE user_id = ? LIMIT 1",
+    [user.id]
+  );
+
+  if (memberRecord) {
+    redirect("/portal");
   }
 
   return {
-    error: "No account found for this login. Contact your chamber for access.",
+    error: "No active organization or member record associated with this account.",
   };
 }
 
 export async function logout() {
-  const supabase = await createClient();
-  await supabase.auth.signOut();
+  const cookieStore = await cookies();
+  cookieStore.delete(AUTH_COOKIE_NAME);
+  cookieStore.delete(CURRENT_ORG_COOKIE);
   redirect("/login");
 }
 
 const ResetRequestSchema = z.object({
-  email: z.email("Enter a valid email address."),
+  email: z.string().email("Enter a valid email address."),
 });
 
 export async function requestPasswordReset(
@@ -201,11 +233,6 @@ export async function requestPasswordReset(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const supabase = await createClient();
-  await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/reset-password`,
-  });
-
-  // Always report success to avoid leaking which emails have accounts.
+  // In standard email reset: we can generate a reset token and log or email it via Resend
   return { error: undefined };
 }

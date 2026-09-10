@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import crypto from "crypto";
+import { execute } from "@/lib/db/mysql";
 import { requireOrg, requireMember } from "@/lib/auth/session";
 import { canEditMembers, canDeleteMembers } from "@/lib/auth/permissions";
 
@@ -44,20 +45,31 @@ export async function createIssue(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase.from("advocacy_issues").insert({
-    org_id: org.id,
-    title: parsed.data.title,
-    description: parsed.data.description ?? null,
-    status: parsed.data.status,
-    position: parsed.data.position ?? null,
-    cta_headline: parsed.data.ctaHeadline ?? null,
-    cta_email_subject: parsed.data.ctaEmailSubject ?? null,
-    cta_email_body: parsed.data.ctaEmailBody ?? null,
-    goal_count: parsed.data.goalCount ?? null,
-  });
+  const issueId = crypto.randomUUID();
+  const d = parsed.data;
 
-  if (error) return { error: error.message };
+  try {
+    await execute(
+      `INSERT INTO advocacy_issues (
+        id, org_id, title, description, status, position,
+        cta_headline, cta_email_subject, cta_email_body, goal_count
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        issueId,
+        org.id,
+        d.title,
+        d.description ?? null,
+        d.status,
+        d.position ?? null,
+        d.ctaHeadline ?? null,
+        d.ctaEmailSubject ?? null,
+        d.ctaEmailBody ?? null,
+        d.goalCount ?? null,
+      ]
+    );
+  } catch (error: any) {
+    return { error: error?.message || "Could not create advocacy issue." };
+  }
 
   revalidatePath("/advocacy");
   redirect("/advocacy");
@@ -67,8 +79,10 @@ export async function deleteIssue(issueId: string) {
   const org = await requireOrg();
   if (!canDeleteMembers(org.role)) return;
 
-  const supabase = await createClient();
-  await supabase.from("advocacy_issues").delete().eq("id", issueId).eq("org_id", org.id);
+  await execute(
+    "DELETE FROM advocacy_issues WHERE id = ? AND org_id = ?",
+    [issueId, org.id]
+  );
   revalidatePath("/advocacy");
 }
 
@@ -76,7 +90,7 @@ const OfficialSchema = z.object({
   name: z.string().min(1, "Name is required."),
   title: z.string().optional(),
   level: z.enum(["federal", "state", "local"]).default("local"),
-  email: z.email().optional().or(z.literal("")),
+  email: z.string().email().optional().or(z.literal("")),
   phone: z.string().optional(),
 });
 
@@ -101,17 +115,25 @@ export async function createOfficial(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase.from("officials").insert({
-    org_id: org.id,
-    name: parsed.data.name,
-    title: parsed.data.title ?? null,
-    level: parsed.data.level,
-    email: parsed.data.email || null,
-    phone: parsed.data.phone ?? null,
-  });
+  const officialId = crypto.randomUUID();
 
-  if (error) return { error: error.message };
+  try {
+    await execute(
+      `INSERT INTO officials (id, org_id, name, title, level, email, phone)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        officialId,
+        org.id,
+        parsed.data.name,
+        parsed.data.title ?? null,
+        parsed.data.level,
+        parsed.data.email || null,
+        parsed.data.phone ?? null,
+      ]
+    );
+  } catch (error: any) {
+    return { error: error?.message || "Could not create official." };
+  }
 
   revalidatePath("/advocacy");
   redirect("/advocacy");
@@ -121,19 +143,23 @@ export async function deleteOfficial(officialId: string) {
   const org = await requireOrg();
   if (!canDeleteMembers(org.role)) return;
 
-  const supabase = await createClient();
-  await supabase.from("officials").delete().eq("id", officialId).eq("org_id", org.id);
+  await execute(
+    "DELETE FROM officials WHERE id = ? AND org_id = ?",
+    [officialId, org.id]
+  );
   revalidatePath("/advocacy");
 }
 
 export async function logAction(issueId: string) {
   const member = await requireMember();
-  const supabase = await createClient();
-  await supabase.from("advocacy_action_log").insert({
-    org_id: member.orgId,
-    issue_id: issueId,
-    member_id: member.id,
-  });
+  const logId = crypto.randomUUID();
+
+  await execute(
+    `INSERT INTO advocacy_action_log (id, org_id, issue_id, member_id)
+     VALUES (?, ?, ?, ?)`,
+    [logId, member.orgId, issueId, member.id]
+  );
+
   revalidatePath("/portal/advocacy");
   revalidatePath("/advocacy");
 }

@@ -2,22 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import crypto from "crypto";
+import { execute } from "@/lib/db/mysql";
 import { requireMember } from "@/lib/auth/session";
-import { createAdminClient } from "@/lib/supabase/admin";
 
 export type FormState = { error?: string; success?: boolean } | undefined;
 
 const ProfileSchema = z.object({
   contactName: z.string().optional(),
-  email: z.email().optional().or(z.literal("")),
+  email: z.string().email().optional().or(z.literal("")),
   phone: z.string().optional(),
 });
 
-// Members write through the service-role client rather than an RLS update
-// policy: the ownership check below (requireMember() + .eq("id", member.id))
-// is what keeps this scoped to the caller's own row, and it lets us leave
-// tier/status/business_name out of what a member can touch without needing
-// column-level RLS.
 export async function updateMyProfile(
   _prevState: FormState,
   formData: FormData,
@@ -34,17 +30,19 @@ export async function updateMyProfile(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const admin = createAdminClient();
-  const { error } = await admin
-    .from("members")
-    .update({
-      contact_name: parsed.data.contactName ?? null,
-      email: parsed.data.email || null,
-      phone: parsed.data.phone ?? null,
-    })
-    .eq("id", member.id);
-
-  if (error) return { error: error.message };
+  try {
+    await execute(
+      "UPDATE members SET contact_name = ?, email = ?, phone = ? WHERE id = ?",
+      [
+        parsed.data.contactName ?? null,
+        parsed.data.email || null,
+        parsed.data.phone ?? null,
+        member.id,
+      ]
+    );
+  } catch (error: any) {
+    return { error: error?.message || "Could not update profile." };
+  }
 
   revalidatePath("/portal/profile");
   return { success: true };
@@ -72,21 +70,28 @@ export async function updateMyListing(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const admin = createAdminClient();
-  // is_public/featured are omitted so staff curation is never overwritten by
-  // a member's own edit — createMember() always creates this row up front.
-  const { error } = await admin.from("directory_listings").upsert(
-    {
-      org_id: member.orgId,
-      member_id: member.id,
-      description: parsed.data.description ?? null,
-      website_url: parsed.data.websiteUrl ?? null,
-      address: parsed.data.address ?? null,
-    },
-    { onConflict: "member_id" },
-  );
+  const listingId = crypto.randomUUID();
 
-  if (error) return { error: error.message };
+  try {
+    await execute(
+      `INSERT INTO directory_listings (id, org_id, member_id, description, website_url, address)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         description = VALUES(description),
+         website_url = VALUES(website_url),
+         address = VALUES(address)`,
+      [
+        listingId,
+        member.orgId,
+        member.id,
+        parsed.data.description ?? null,
+        parsed.data.websiteUrl ?? null,
+        parsed.data.address ?? null,
+      ]
+    );
+  } catch (error: any) {
+    return { error: error?.message || "Could not update directory listing." };
+  }
 
   revalidatePath("/portal/profile");
   return { success: true };
