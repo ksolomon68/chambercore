@@ -1,8 +1,7 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH=${HOME:-/home/$USER}/public_html/
+    - export DEPLOYPATH=/home/chambercore/public_html
     - /bin/cp -R * $DEPLOYPATH
-    - mkdir -p $DEPLOYPATH/tmp
-    - touch $DEPLOYPATH/tmp/restart.txt
-
+    - /bin/mkdir -p $DEPLOYPATH/tmp
+    - /bin/touch $DEPLOYPATH/tmp/restart.txt
