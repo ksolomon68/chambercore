@@ -3,3 +3,6 @@ deployment:
   tasks:
     - export DEPLOYPATH=${HOME:-/home/$USER}/public_html/
     - /bin/cp -R * $DEPLOYPATH
+    - mkdir -p $DEPLOYPATH/tmp
+    - touch $DEPLOYPATH/tmp/restart.txt
+
