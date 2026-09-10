@@ -10,6 +10,9 @@ build/
 # next.js build output
 .next/
 
+# passenger logs
+stderr.log
+
 # misc
 .DS_Store
 *.pem
